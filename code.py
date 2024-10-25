@@ -67,7 +67,8 @@ group.append(label.Label(terminalio.FONT, text=' '*20, color=0xffffff,
                          anchor_point=(0.5, 0.0)
                          ))
 
-macropad.display.show(group)
+# no longer required for recent versions of CircuitPython and AdaFruit libraries
+#macropad.display.show(group)
 
 last_position = None
 last_encoder_switch = None
