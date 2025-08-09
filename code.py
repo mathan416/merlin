@@ -24,64 +24,56 @@ from music_machine import music_machine
 from tictactoe import tictactoe
 from blackjack13 import blackjack13
 from snake import snake
-#from rainbowio import colorwheel
-
+from hit_or_miss import hit_or_miss
+# from rainbowio import colorwheel
 
 macropad = MacroPad()
-# little bit of cleanuo
+# little bit of cleanup
 macropad.pixels.fill((0,0,0))
+
 # configuration
-# scale
 tones = [196, 220, 247, 262, 294, 330, 349, 392, 440, 494, 523, 587]
-#length = 0.5
 
 # create the objects for each game
-# put them in an array
-# turning dial switches to a different item in the array
-# need to have the same API
 games = dict()
-
-games['Magic Square'] = magic_square(macropad, tones)
-games['Mindbender'] = mindbender(macropad, tones)
-games['Echo'] = echo(macropad, tones)
-games['Simon'] = simon(macropad, tones)
+games['Magic Square']  = magic_square(macropad, tones)
+games['Mindbender']    = mindbender(macropad, tones)
+games['Echo']          = echo(macropad, tones)
+games['Simon']         = simon(macropad, tones)
 games['Music Machine'] = music_machine(macropad, tones)
-games['Tic Tac Toe'] = tictactoe(macropad, tones)
-games['Blackjack 13'] = blackjack13(macropad, tones)
-games['Snake'] = snake(macropad, tones, False)
-games['Snake II'] = snake(macropad, tones, True)
+games['Tic Tac Toe']   = tictactoe(macropad, tones)
+games['Blackjack 13']  = blackjack13(macropad, tones)
+games['Snake']         = snake(macropad, tones, False)
+games['Snake II']      = snake(macropad, tones, True)
+games['Hit or Miss']   = hit_or_miss(macropad, tones)
 
-#do display setup 
-#macropad.display.auto_refresh = False
-#macropad.pixels.auto_write = False
+# display setup 
 bitmap = displayio.OnDiskBitmap("MerlinChrome.bmp")
 tile_grid = displayio.TileGrid(
-        bitmap,
-        pixel_shader=getattr(bitmap, 'pixel_shader', displayio.ColorConverter()))
-# Create a Group to hold the TileGrid
+    bitmap,
+    pixel_shader=getattr(bitmap, 'pixel_shader', displayio.ColorConverter())
+)
 group = displayio.Group()
 macropad.display.root_group = group
-    # Add the TileGrid to the Group
 group.append(tile_grid)
 
-group.append(label.Label(terminalio.FONT, text='choose your game:', color=0xffffff,
-                         anchored_position=(macropad.display.width//2, 31),
-                         anchor_point=(0.5, 0.0)
-                         ))
-group.append(label.Label(terminalio.FONT, text=' '*20, color=0xffffff,
-                         anchored_position=(macropad.display.width//2, 45),
-                         anchor_point=(0.5, 0.0)
-                         ))
-
-# macropad.display.show(group)
+group.append(label.Label(
+    terminalio.FONT, text='choose your game:', color=0xffffff,
+    anchored_position=(macropad.display.width//2, 31),
+    anchor_point=(0.5, 0.0)
+))
+group.append(label.Label(
+    terminalio.FONT, text=' '*20, color=0xffffff,
+    anchored_position=(macropad.display.width//2, 45),
+    anchor_point=(0.5, 0.0)
+))
 
 last_position = None
 last_encoder_switch = None
-#force a game selection
-modechange =1
-print ("modechange on")
-# MAIN LOOP ----------------------------
+modechange = 1
+print("modechange on")
 
+# MAIN LOOP ----------------------------
 while True:
     position = macropad.encoder
     if position != last_position:
@@ -104,7 +96,7 @@ while True:
                 group[1].text = "Now Playing:"
                 # select and start the chosen game
                 current_game = games[list(games.keys())[macropad.encoder % len(games)]]
-                current_game.new_game()                
+                current_game.new_game()
             else:
                 modechange = 1
                 group[1].text = "Choose your game:"
@@ -125,14 +117,14 @@ while True:
         if hasattr(current_game, "tick"):
             current_game.tick()
 
-        # Then handle button presses for the current game
+        # Then handle button presses/releases for the current game
         key_event = macropad.keys.events.get()
         if key_event:
             key_number = key_event.key_number
-            if key_event.pressed and key_number < 12:
-                current_game.button(key_number)
-            else:
-                    # is it possible to get here?
-                    # pass for now
-                    pass
-    
+            if key_number < 12:
+                if key_event.pressed:
+                    current_game.button(key_number)
+                else:
+                    # Forward releases if the game supports it (e.g., Hit or Miss reveal)
+                    if hasattr(current_game, "button_up"):
+                        current_game.button_up(key_number)
