@@ -1,5 +1,6 @@
 # tictactoe.py — Merlin-style Tic Tac Toe for Adafruit MacroPad
 # CircuitPython 8.x / 9.x compatible, non-blocking animations
+# Written by Iain Bennett - 2025
 
 import time
 import math
@@ -22,9 +23,6 @@ class tictactoe:
         self.PULSE_FRAME_DT   = 0.03  # seconds between pulse frames
         self.PULSE_PHASE_STEP = 0.05  # phase added per frame (higher = faster pulse)
 
-        # Startup sweep tuning (column sweeps)
-        self.STARTUP_FRAME_DT = 0.10  # seconds between startup frames
-
         self.CELL_KEYS = list(range(9))  # 0..8 map to board cells
         self.BTN_NEW   = 9               # K9
         self.BTN_SWAP  = 10              # K10
@@ -40,7 +38,7 @@ class tictactoe:
         self._blink_phase = 0.0
         self._last_blink  = time.monotonic()
 
-        # Animation mode: None | "startup" | "endgame"
+        # Animation mode: None | "endgame"
         self.anim_mode = None
 
         # Endgame anim state
@@ -49,10 +47,6 @@ class tictactoe:
         self.anim_last = 0.0
         self.anim_pulses_per_color = 1
         self.anim_pulse_phase = 0.0
-
-        # Startup anim state (column sweeps)
-        self.startup_phase = None   # "red_sweep" | "blue_sweep"
-        self.startup_col = 0        # which column 0..2
 
         # Build OLED UI
         self._build_display()
@@ -106,6 +100,7 @@ class tictactoe:
 
     # ---------- Public API ----------
     def new_game(self):
+        print ("new Tic Tac Toe")
         self.board = [0]*9
         self.game_over = False
         self.starter = 1
@@ -116,12 +111,15 @@ class tictactoe:
         self._stop_anim()
         self._show_legends(True)
         self._normal_status("Human to move")
+
+        # Start-game wipe (Simon-style)
+        self._start_game_wipe()
+
+        # Switch to the Tic Tac Toe UI group
         try:
             self.mac.display.root_group = self.group  # CP 9.x
         except AttributeError:
             self.mac.display.show(self.group)         # CP 8.x
-        # Kick off startup animation (column sweeps)
-        self._start_startup_anim()
 
     def button(self, key_number):
         if key_number in self.CELL_KEYS:
@@ -139,13 +137,8 @@ class tictactoe:
     def tick(self):
         now = time.monotonic()
 
-        # Run any active animation mode
-        if self.anim_mode == "startup":
-            self._run_startup_anim(now)
-            pulse = 0.5 + 0.5 * math.cos((now % 10) * 2 * math.pi * 1.4)
-            self._render_controls(pulse, endgame=False)
-            return
-        elif self.anim_mode == "endgame":
+        # Endgame animation, if active
+        if self.anim_mode == "endgame":
             self._run_end_anim(now)
             pulse = 0.5 + 0.5 * math.cos((now % 10) * 2 * math.pi * 1.4)
             self._render_controls(pulse, endgame=True)
@@ -255,11 +248,13 @@ class tictactoe:
         if ix is None:
             for k in (0,2,6,8):
                 if self.board[k] == 0:
-                    ix = k; break
+                    ix = k
+                    break
         if ix is None:
             for k in (1,3,5,7):
                 if self.board[k] == 0:
-                    ix = k; break
+                    ix = k
+                    break
         if ix is None:
             return
         self.board[ix] = 2
@@ -305,7 +300,7 @@ class tictactoe:
         self._check_state()
 
     def _computer_turn_button(self):
-        # No thinking animation — move immediately
+        # Move immediately (no thinking animation)
         if self.anim_mode is not None:
             return
         if self.game_over or self.human_to_move:
@@ -342,46 +337,44 @@ class tictactoe:
         for f in (523, 523):
             self._play(f, 0.05)
 
-    # ---------- Startup Animation (column sweeps: red L→R, blue R→L) ----------
-    def _start_startup_anim(self):
-        self.anim_mode = "startup"
-        self.startup_phase = "red_sweep"
-        self.startup_col = 0
-        self.anim_last = time.monotonic()
+    # ---------- Start Game Wipe (Simon-style) ----------
+    def _start_game_wipe(self):
+        """Blue dot sweep, reveal with purple/blue palette + triad, then fade to black."""
+        self.mac.pixels.brightness = self.BRIGHT
 
-    def _run_startup_anim(self, now):
-        # Column sweeps over keys 0..8 only; controls are handled separately
-        if now - self.anim_last < self.STARTUP_FRAME_DT:
-            return
-        self.anim_last = now
+        # Same palette Simon uses (purple down to deep blue)
+        wipe_colors = [
+            0xF400FD, 0xDE04EE, 0xC808DE,
+            0xB20CCF, 0x9C10C0, 0x8614B0,
+            0x6F19A1, 0x591D91, 0x432182,
+            0x2D2573, 0x172963, 0x012D54
+        ]
 
-        # Clear board keys each frame
-        for i in range(9):
-            self.mac.pixels[i] = 0x000000
+        # Dot sweep over all 12 keys
+        for x in range(12):
+            self.mac.pixels[x] = 0x000099  # blue dot
+            time.sleep(0.1)
+            self.mac.pixels[x] = wipe_colors[x]
 
-        def light_column(col_index, color):
-            # columns: (0,3,6), (1,4,7), (2,5,8)
-            base = col_index
-            for r in (0, 1, 2):
-                self.mac.pixels[base + 3*r] = color
+        # Triad like Simon
+        try:
+            self.mac.play_tone(self.tones[0], 0.5)
+            self.mac.play_tone(self.tones[2], 0.5)
+            self.mac.play_tone(self.tones[4], 0.5)
+        except Exception:
+            pass
 
-        if self.startup_phase == "red_sweep":
-            if self.startup_col <= 2:
-                light_column(self.startup_col, self.COLOR_HUMAN)
-                self.startup_col += 1
-            else:
-                self.startup_phase = "blue_sweep"
-                self.startup_col = 2
+        # Fade the palette down so the game UI takes over cleanly
+        for s in (0.4, 0.2, 0.1, 0.0):
+            for i in range(12):
+                c = wipe_colors[i]
+                r = int(((c >> 16) & 0xFF) * s)
+                g = int(((c >> 8) & 0xFF) * s)
+                b = int((c & 0xFF) * s)
+                self.mac.pixels[i] = (r << 16) | (g << 8) | b
+            time.sleep(0.02)
 
-        elif self.startup_phase == "blue_sweep":
-            if self.startup_col >= 0:
-                light_column(self.startup_col, self.COLOR_CPU)
-                self.startup_col -= 1
-            else:
-                # End startup; board clears; normal rendering takes over
-                for i in range(9):
-                    self.mac.pixels[i] = 0x000000
-                self._stop_anim()
+        self._lights_clear()
 
     # ---------- Endgame Animation (cosine pulses, then final board) ----------
     def _start_end_anim(self, colors, pulses_per_color=1):
@@ -421,7 +414,11 @@ class tictactoe:
         self._normal_status("Human to move")
         self._show_legends(True)
         self._lights_clear()
-        self._start_startup_anim()
+        self._start_game_wipe()
+        try:
+            self.mac.display.root_group = self.group
+        except AttributeError:
+            self.mac.display.show(self.group)
 
     def _reset_swap(self):
         if self.anim_mode is not None:
@@ -433,14 +430,16 @@ class tictactoe:
         self._normal_status("Human to move" if self.human_to_move else "CPU to move")
         self._show_legends(True)
         self._lights_clear()
-        self._start_startup_anim()
-        # After startup, press K11 for CPU to move if CPU starts.
+        self._start_game_wipe()
+        try:
+            self.mac.display.root_group = self.group
+        except AttributeError:
+            self.mac.display.show(self.group)
+        # If CPU starts, press K11 for CPU to move.
 
     # ---------- Animation reset ----------
     def _stop_anim(self):
         self.anim_mode = None
         self.anim_colors = []
         self.anim_idx = 0
-        self.startup_phase = None
-        self.startup_col = 0
         # visuals are handled by tick()/anim runners
