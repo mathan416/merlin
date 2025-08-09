@@ -21,8 +21,8 @@ from magic_square import magic_square
 from echo import echo
 from simon import simon
 from music_machine import music_machine
+from tictactoe import tictactoe
 #from rainbowio import colorwheel
-
 
 
 macropad = MacroPad()
@@ -44,6 +44,7 @@ games['Mindbender'] = mindbender(macropad, tones)
 games['Echo'] = echo(macropad, tones)
 games['Simon'] = simon(macropad, tones)
 games['Music Machine'] = music_machine(macropad, tones)
+games['Tic Tac Toe'] = tictactoe(macropad, tones)
 
 #do display setup 
 #macropad.display.auto_refresh = False
@@ -54,7 +55,7 @@ tile_grid = displayio.TileGrid(
         pixel_shader=getattr(bitmap, 'pixel_shader', displayio.ColorConverter()))
 # Create a Group to hold the TileGrid
 group = displayio.Group()
-
+macropad.display.root_group = group
     # Add the TileGrid to the Group
 group.append(tile_grid)
 
@@ -67,7 +68,7 @@ group.append(label.Label(terminalio.FONT, text=' '*20, color=0xffffff,
                          anchor_point=(0.5, 0.0)
                          ))
 
-macropad.display.show(group)
+# macropad.display.show(group)
 
 last_position = None
 last_encoder_switch = None
@@ -80,55 +81,52 @@ while True:
     position = macropad.encoder
     if position != last_position:
         if modechange:
-            pass#cycle through the games
-            #game_index = position % len(games)
-            # print the name
-            #print (list(games.keys())[game_index])
+            pass  # cycle through the games (menu mode)
         else:
-            # what to do with knob twiddles without change mode? Nothing.
+            # In game mode, let the game handle encoder changes if it wants
             current_game.encoderChange(position, last_position)
         last_position = position
-        
-        
 
-# If code reaches here, a key or the encoder button WAS pressed/released
-    # and there IS a corresponding macro available for it...other situations
-    # are avoided by 'continue' statements above which resume the loop.
+    # Encoder button toggles between menu <-> game
     macropad.encoder_switch_debounced.update()
     encoder_switch = macropad.encoder_switch_debounced.pressed
     if encoder_switch != last_encoder_switch:
         last_encoder_switch = encoder_switch
         if encoder_switch:
             if modechange:
-                modechange =0
-                print ("modechange off")
-                group[1].text = "now playing:"
-                #get the new selected game and make it happen
-                #do the change of mode
+                modechange = 0
+                print("modechange off")
+                group[1].text = "Now Playing:"
+                # select and start the chosen game
                 current_game = games[list(games.keys())[macropad.encoder % len(games)]]
-                current_game.new_game()
+                current_game.new_game()                
             else:
-                modechange =1
-                #show text for mode change
-                group[1].text = "choose your game:"
-                # show lights for mode change
-                macropad.pixels.fill((50,0,0))
+                modechange = 1
+                group[1].text = "Choose your game:"
+                macropad.pixels.fill((50, 0, 0))
+                # CP 9+: root_group; CP 8.x fallback
+                try:
+                    macropad.display.root_group = group
+                except AttributeError:
+                    macropad.display.show(group)
+
     elif modechange:
-        #read the encoder
-        current_knob = macropad.encoder % len(games)  
-        group[2].text = list(games.keys())[current_knob] 
+        # Menu mode: update highlighted game name as the knob turns
+        current_knob = macropad.encoder % len(games)
+        group[2].text = list(games.keys())[current_knob]
 
     else:
+        # -------- Game mode: run the game's frame update --------
+        if hasattr(current_game, "tick"):
+            current_game.tick()
+
+        # Then handle button presses for the current game
         key_event = macropad.keys.events.get()
         if key_event:
             key_number = key_event.key_number
-            pressed = key_event.pressed
-            if pressed:
-                if key_number < 12: # one of the game buttons
-                    #print ("pressed key",key_number)
-                    current_game.button(key_number)
-                
-                else:
+            if key_event.pressed and key_number < 12:
+                current_game.button(key_number)
+            else:
                     # is it possible to get here?
                     # pass for now
                     pass
