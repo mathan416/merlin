@@ -22,6 +22,8 @@ from echo import echo
 from simon import simon
 from music_machine import music_machine
 from tictactoe import tictactoe
+from blackjack13 import blackjack13
+from snake import snake
 #from rainbowio import colorwheel
 
 
@@ -45,6 +47,9 @@ games['Echo'] = echo(macropad, tones)
 games['Simon'] = simon(macropad, tones)
 games['Music Machine'] = music_machine(macropad, tones)
 games['Tic Tac Toe'] = tictactoe(macropad, tones)
+games['Blackjack 13'] = blackjack13(macropad, tones)
+games['Snake'] = snake(macropad, tones, False)
+games['Snake II'] = snake(macropad, tones, True)
 
 #do display setup 
 #macropad.display.auto_refresh = False

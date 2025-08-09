@@ -1,0 +1,497 @@
+# snake.py — Nokia-style Snake for Adafruit MacroPad
+# CircuitPython 8.x / 9.x compatible, non-blocking tick-based movement
+# Written by Iain Bennett & ChatGPT — 2025
+
+import time
+import math
+import random
+import displayio
+import terminalio
+from adafruit_display_text import label
+from adafruit_display_shapes.rect import Rect  # border frame
+
+class snake:
+    def __init__(self, macropad, tones, wraparound=False):
+        self.mac = macropad
+        self.tones = tones
+        self.wraparound = wraparound
+
+        # Make LED animations smooth by batching updates
+        try:
+            self.mac.pixels.auto_write = False
+        except AttributeError:
+            pass
+
+        # ---- LED / color config ----
+        self.BRIGHT = 0.30
+        self.COLOR_SNAKE = 0x00FF00  # Green (direction LEDs)
+        self.COLOR_PAUSE = 0xFFFF00  # Yellow (pause)
+        self.COLOR_FOOD  = 0xFFFFFF  # White (food)
+        self.COLOR_BG    = 0x000000
+
+        # Wipe palette (Simon-style)
+        self.WIPE_COLORS = [
+            0xF400FD, 0xDE04EE, 0xC808DE,
+            0xB20CCF, 0x9C10C0, 0x8614B0,
+            0x6F19A1, 0x591D91, 0x432182,
+            0x2D2573, 0x172963, 0x012D54
+        ]
+
+        # Buttons
+        self.K_NEW   = 0   # K0  : New (only at game over)
+        self.K_PAUSE = 2   # K2  : Pause/Resume
+        self.K_UP    = 4   # K4  : Up
+        self.K_LEFT  = 6   # K6  : Left
+        self.K_RIGHT = 8   # K8  : Right
+        self.K_DOWN  = 10  # K10 : Down
+        self.DIR_KEYS = (self.K_UP, self.K_LEFT, self.K_RIGHT, self.K_DOWN)
+
+        # Board geometry (fits 128x64 OLED nicely)
+        self.BOARD_W = 16
+        self.BOARD_H = 8
+        self.CELL    = 6  # pixels per cell
+        self.OFF_X   = (128 - self.BOARD_W * self.CELL) // 2  # center
+        self.OFF_Y   = 12
+
+        # Timing
+        self.BASE_INTERVAL = 0.25  # seconds per step at start
+        self.MIN_INTERVAL  = 0.08
+        self.SPEED_FACTOR  = 0.97  # multiply interval each fruit eaten
+        self._last_led_refresh = time.monotonic()
+
+        # Pulse behavior (cosine-based, smooth)
+        self.SLOW_PULSE_HZ = 0.6  # gentle "breathe" rate
+
+        # Key flash overlay (accepted / illegal inputs)
+        self.flash = {}  # key_index -> (until_time, color)
+
+        # Per-mode high score file + value
+        self._hs_path = "/snake_highscore_wrap.txt" if self.wraparound else "/snake_highscore_classic.txt"
+        self.high_score = self._load_high_score()
+
+        # Build OLED + initial state
+        self._build_display()
+        self._reset_state()
+
+    # ---------- Display ----------
+    def _build_display(self):
+        W, H = self.mac.display.width, self.mac.display.height
+        self.group = displayio.Group()
+
+        # Background
+        bg_bitmap = displayio.Bitmap(W, H, 1)
+        pal = displayio.Palette(1)
+        pal[0] = self.COLOR_BG
+        self.group.append(displayio.TileGrid(bg_bitmap, pixel_shader=pal))
+
+        # Title / status
+        self.status = label.Label(
+            terminalio.FONT, text="Snake",
+            color=0xFFFFFF, anchor_point=(0.5, 0.0), anchored_position=(W//2, 0)
+        )
+        self.group.append(self.status)
+
+        # Board bitmap (monochrome palette)
+        bw_px = self.BOARD_W * self.CELL
+        bh_px = self.BOARD_H * self.CELL
+        self.board_bitmap = displayio.Bitmap(bw_px, bh_px, 4)
+        self.board_pal = displayio.Palette(4)
+        self.board_pal[0] = self.COLOR_BG   # empty = black
+        self.board_pal[1] = 0xFFFFFF        # snake body = white
+        self.board_pal[2] = 0xFFFFFF        # snake head  = white
+        self.board_pal[3] = 0xFFFFFF        # food        = white
+        self.board_tile = displayio.TileGrid(
+            self.board_bitmap, pixel_shader=self.board_pal, x=self.OFF_X, y=self.OFF_Y
+        )
+        self.group.append(self.board_tile)
+
+        # Border frame (thin white outline around the playfield)
+        self.border = Rect(
+            self.OFF_X - 1, self.OFF_Y - 1,
+            bw_px + 2, bh_px + 2,
+            outline=0xFFFFFF, stroke=1
+        )
+        self.group.append(self.border)
+
+        # End-of-game score lines (hidden during play) — SAME SIZE (scale=1)
+        self.end_score = label.Label(
+            terminalio.FONT, text="", color=0xFFFFFF,
+            scale=1,
+            anchor_point=(0.5, 0.0), anchored_position=(W//2, 12)
+        )
+        self.end_best  = label.Label(
+            terminalio.FONT, text="", color=0xAAAAAA,
+            scale=1,
+            anchor_point=(0.5, 0.0), anchored_position=(W//2, 26)
+        )
+        self.end_score.hidden = True
+        self.end_best.hidden = True
+        self.group.append(self.end_score)
+        self.group.append(self.end_best)
+
+    def _show_group(self):
+        try:
+            self.mac.display.root_group = self.group  # CP 9.x
+        except AttributeError:
+            self.mac.display.show(self.group)         # CP 8.x
+
+    # ---------- Public API ----------
+    def new_game(self):
+        print("new Snake" + (" II" if self.wraparound else ""))
+        self._lights_clear()
+        self._reset_state()
+        self._start_game_wipe()
+        self._show_group()
+        # Initial draw is done in _reset_state()
+
+    def button(self, key):
+        now = time.monotonic()
+
+        # End-of-game: only K0 (New) works
+        if self.game_over:
+            if key == self.K_NEW:
+                self.new_game()
+            return
+
+        # Pause toggle
+        if key == self.K_PAUSE:
+            self.paused = not self.paused
+            self.status.text = ("Snake II" if self.wraparound else "Snake") + (" — Paused" if self.paused else "")
+            self.end_score.hidden = True
+            self.end_best.hidden = True
+            self._flash_key(self.K_PAUSE, self.COLOR_PAUSE, 0.15)
+            return
+
+        # Ignore movement while paused
+        if self.paused:
+            return
+
+        # Movement keys
+        if key in self.DIR_KEYS:
+            dx, dy = self._dir_for_key(key)
+            # prevent 180° reversal when length>1
+            if len(self.snake) > 1 and (dx, dy) == (-self.dir[0], -self.dir[1]):
+                self._flash_key(key, 0xFF0000, 0.12)  # red flash for illegal
+                return
+            # accept turn
+            self.dir = (dx, dy)
+            self._flash_key(key, 0xFFFFFF, 0.07)  # white flash
+
+    def encoderChange(self, position, last_position):
+        return
+
+    def tick(self):
+        now = time.monotonic()
+
+        if self.game_over:
+            self._render_controls(now)
+            return
+
+        if self.paused:
+            self._render_controls(now)
+            return
+
+        if now >= self.next_step:
+            self._step()
+            self.next_step = now + self.step_interval
+
+        if now - self._last_led_refresh >= 0.03:
+            self._last_led_refresh = now
+            self._render_controls(now)
+
+    # ---------- Internals ----------
+    def _reset_state(self):
+        # Nokia-style start: single block (just the head)
+        cx, cy = self.BOARD_W // 2, self.BOARD_H // 2
+        self.snake = [(cx, cy)]     # length = 1
+        self.dir = (1, 0)
+        self.spawn_food()
+        self.game_over = False
+        self.paused = False
+
+        # Score/overlay
+        self.score = 0
+        self.grow_pending = 0      # queued growth segments to add
+        self.end_score.hidden = True
+        self.end_best.hidden = True
+
+        # Timing
+        self.step_interval = self.BASE_INTERVAL
+        self.next_step = time.monotonic() + self.step_interval
+
+        # Clear flashes
+        self.flash.clear()
+
+        # Initial draw: fruit once, snake once (no full-board redraws afterward)
+        self._clear_board_bitmap()
+        self._draw_food()
+        self._draw_snake_initial()
+
+        self.status.text = "Snake II" if self.wraparound else "Snake"
+
+    def _dir_for_key(self, key):
+        if key == self.K_UP:    return (0, -1)
+        if key == self.K_DOWN:  return (0, 1)
+        if key == self.K_LEFT:  return (-1, 0)
+        if key == self.K_RIGHT: return (1, 0)
+        return self.dir
+
+    def spawn_food(self):
+        # Prefer inner cells (avoid the border ring) so fruit isn't on the wall
+        inner = {(x, y)
+                 for x in range(1, self.BOARD_W - 1)
+                 for y in range(1, self.BOARD_H - 1)}
+        snake_cells = set(self.snake)
+
+        inner_empty = list(inner - snake_cells)
+        if inner_empty:
+            self.food = random.choice(inner_empty)
+            return
+
+        # Fallback: if inner is full, allow anywhere empty
+        all_empty = {(x, y) for x in range(self.BOARD_W) for y in range(self.BOARD_H)} - snake_cells
+        if not all_empty:
+            # Board completely full — big win!
+            self._on_game_over()
+            return
+        self.food = random.choice(tuple(all_empty))
+
+    def _step(self):
+        if self.game_over or self.paused:
+            return
+
+        hx, hy = self.snake[0]
+        dx, dy = self.dir
+
+        if self.wraparound:
+            nx = (hx + dx) % self.BOARD_W
+            ny = (hy + dy) % self.BOARD_H
+            hit_wall = False
+        else:
+            nx = hx + dx
+            ny = hy + dy
+            hit_wall = (nx < 0 or nx >= self.BOARD_W or ny < 0 or ny >= self.BOARD_H)
+
+        if hit_wall or (nx, ny) in self.snake:
+            self._on_game_over()
+            return
+
+        # Move: insert new head
+        self.snake.insert(0, (nx, ny))
+        ate = (nx, ny) == self.food
+
+        # --- Incremental bitmap updates (no full redraw) ---
+        # old head becomes body (if previous length > 0)
+        self._set_cell_index(hx, hy, 1)
+        # new head cell
+        self._set_cell_index(nx, ny, 2)
+
+        if ate:
+            self._sound_eat()
+            self.score += 1
+            self.grow_pending += 1                      # +1 segments per fruit
+            self.step_interval = max(self.MIN_INTERVAL, self.step_interval * self.SPEED_FACTOR)
+            self.spawn_food()
+            self._draw_food()                           # draw new fruit only now
+        else:
+            if self.grow_pending > 0:
+                self.grow_pending -= 1                  # consume one unit of growth
+            else:
+                # no growth: remove tail
+                tx, ty = self.snake.pop()
+                self._set_cell_index(tx, ty, 0)
+
+    # ---------- Board rendering (helpers) ----------
+    def _clear_board_bitmap(self):
+        bw, bh = self.board_bitmap.width, self.board_bitmap.height
+        for y in range(bh):
+            for x in range(bw):
+                self.board_bitmap[x, y] = 0  # background
+
+    def _fill_cell(self, cx, cy, color_index):
+        ox = cx * self.CELL
+        oy = cy * self.CELL
+        for y in range(oy, oy + self.CELL):
+            for x in range(ox, ox + self.CELL):
+                self.board_bitmap[x, y] = color_index
+
+    # Write by palette index directly (fast small edits)
+    def _set_cell_index(self, cx, cy, idx):
+        ox = cx * self.CELL
+        oy = cy * self.CELL
+        for y in range(oy, oy + self.CELL):
+            for x in range(ox, ox + self.CELL):
+                self.board_bitmap[x, y] = idx
+
+    def _draw_food(self):
+        fx, fy = self.food
+        self._set_cell_index(fx, fy, 3)  # palette index 3 = food (white)
+
+    def _draw_snake_initial(self):
+        for i, (sx, sy) in enumerate(self.snake):
+            self._set_cell_index(sx, sy, 2 if i == 0 else 1)
+
+    # ---------- Key LEDs ----------
+    def _render_controls(self, now):
+        self.mac.pixels.brightness = self.BRIGHT
+
+        # Start with everything off
+        for i in range(12):
+            self.mac.pixels[i] = 0x000000
+
+        if self.game_over:
+            # K0: cosine pulse inviting a new game
+            pulse = self._pulse(now)
+            self.mac.pixels[self.K_NEW] = self._scale(0xFFFFFF, pulse)
+            return self._pixels_show()
+
+        # Movement keys: static dim green
+        for k in self.DIR_KEYS:
+            self.mac.pixels[k] = self._scale(self.COLOR_SNAKE, 0.18)
+
+        # Current direction: static bright green
+        dir_key = self._key_for_dir(self.dir)
+        if dir_key is not None:
+            self.mac.pixels[dir_key] = self._scale(self.COLOR_SNAKE, 0.9)
+
+        # Pause indicator
+        if self.paused:
+            # K2 cosine pulse while paused
+            pulse = self._pulse(now)
+            self.mac.pixels[self.K_PAUSE] = self._scale(self.COLOR_PAUSE, pulse)
+        else:
+            # Playing: steady dim white on K2 (no flicker)
+            self.mac.pixels[self.K_PAUSE] = self._scale(0xFFFFFF, 0.12)
+
+        # Flash overlays (accepted / illegal inputs) temporarily override
+        to_del = []
+        for k, (until, col) in self.flash.items():
+            if now <= until:
+                self.mac.pixels[k] = col
+            else:
+                to_del.append(k)
+        for k in to_del:
+            del self.flash[k]
+
+        self._pixels_show()
+
+    def _key_for_dir(self, d):
+        if d == (0, -1): return self.K_UP
+        if d == (0, 1):  return self.K_DOWN
+        if d == (-1, 0): return self.K_LEFT
+        if d == (1, 0):  return self.K_RIGHT
+        return None
+
+    def _flash_key(self, key, color, dur):
+        self.flash[key] = (time.monotonic() + dur, color)
+
+    # ---------- Game over ----------
+    def _on_game_over(self):
+        self.game_over = True
+        title = "Snake II" if self.wraparound else "Snake"
+        self.status.text = title + " Game Over"
+        self._sound_crash()
+
+        # Clear snake + fruit from the screen before showing scores
+        self._clear_board_bitmap()
+
+        if self.score > self.high_score:
+            self.high_score = self.score
+            self._save_high_score(self.high_score)
+
+        self.end_score.text = "Score: {}".format(self.score)
+        self.end_best.text  = "Best:  {}".format(self.high_score)
+        self.end_score.hidden = False
+        self.end_best.hidden  = False
+
+    # ---------- Sounds ----------
+    def _play(self, freq, dur):
+        try:
+            self.mac.play_tone(freq, dur)
+        except Exception:
+            pass
+
+    def _sound_eat(self):
+        for f in (523, 659):
+            self._play(f, 0.03)
+
+    def _sound_crash(self):
+        for f in (196, 130):
+            self._play(f, 0.07)
+
+    # ---------- Start Game Wipe ----------
+    def _start_game_wipe(self):
+        self.mac.pixels.brightness = self.BRIGHT
+        # Blue dot sweep → reveal palette → triad (0.5s each) → fade
+        for x in range(12):
+            self.mac.pixels[x] = 0x000099
+            self._pixels_show()
+            time.sleep(0.06)
+            self.mac.pixels[x] = self.WIPE_COLORS[x]
+            self._pixels_show()
+
+        try:
+            if len(self.tones) >= 5:
+                self.mac.play_tone(self.tones[0], 0.5)
+                self.mac.play_tone(self.tones[2], 0.5)
+                self.mac.play_tone(self.tones[4], 0.5)
+        except Exception:
+            pass
+
+        for s in (0.4, 0.2, 0.1, 0.0):
+            for i in range(12):
+                c = self.WIPE_COLORS[i]
+                r = int(((c >> 16) & 0xFF) * s)
+                g = int(((c >> 8) & 0xFF) * s)
+                b = int((c & 0xFF) * s)
+                self.mac.pixels[i] = (r << 16) | (g << 8) | b
+            self._pixels_show()
+            time.sleep(0.02)
+        self._lights_clear()
+
+    # ---------- High score helpers ----------
+    def _load_high_score(self):
+        try:
+            with open(self._hs_path, "r") as f:
+                return int(f.read().strip() or "0")
+        except Exception:
+            return 0
+
+    def _save_high_score(self, value):
+        try:
+            with open(self._hs_path, "w") as f:
+                f.write(str(int(value)))
+        except Exception:
+            pass
+
+    # ---------- Misc helpers ----------
+    def _pulse(self, now):
+        # Cosine-based smooth pulse between ~35% and 100%
+        return 0.35 + 0.65 * (0.5 + 0.5 * math.cos(now * 2 * math.pi * self.SLOW_PULSE_HZ))
+
+    def _scale(self, color, s):
+        r = (color >> 16) & 0xFF
+        g = (color >> 8) & 0xFF
+        b = color & 0xFF
+        r = int(r * s); g = int(g * s); b = int(b * s)
+        return (r << 16) | (g << 8) | b
+
+    def _blend(self, c1, c2, t):
+        r1, g1, b1 = (c1 >> 16) & 0xFF, (c1 >> 8) & 0xFF, c1 & 0xFF
+        r2, g2, b2 = (c2 >> 16) & 0xFF, (c2 >> 8) & 0xFF, c2 & 0xFF
+        r = int(r1 + (r2 - r1) * t)
+        g = int(g1 + (g2 - g1) * t)
+        b = int(b1 + (b2 - b1) * t)
+        return (r << 16) | (g << 8) | b
+
+    def _lights_clear(self):
+        self.mac.pixels.brightness = self.BRIGHT
+        for i in range(12):
+            self.mac.pixels[i] = 0x000000
+        self._pixels_show()
+
+    def _pixels_show(self):
+        try:
+            self.mac.pixels.show()
+        except AttributeError:
+            pass
