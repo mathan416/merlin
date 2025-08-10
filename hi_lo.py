@@ -1,6 +1,24 @@
 # hi_lo.py — Master Merlin "Hi/Lo" for Adafruit MacroPad
-# Guess 0..99. K0..K8 = 1..9, K10 = 0, K11 = Enter, K9 = New
-# Shows red UP/DOWN arrows; green double arrow on win. Displays tries.
+# CircuitPython 8.x / 9.x compatible, non-blocking animations
+# Written by Iain Bennett — 2025
+# Inspired by Keith Tanner's Merlin for the Macropad
+#
+# Hi/Lo is a Master Merlin-style number guessing game where the player tries
+# to guess a secret number between 0 and 99. After each guess, the MacroPad
+# displays an arrow indicating whether the secret number is higher or lower.
+# A green double arrow appears when the player wins.
+#
+# Controls:
+#   • K0..K8 — Digits 1–9
+#   • K10    — Digit 0
+#   • K11    — Enter guess
+#   • K9     — New game
+#
+# Features:
+#   • On-screen status text showing guesses and hints
+#   • LED arrow indicators for higher/lower hints
+#   • Green win animation with double arrow
+#   • Click sounds for key presses and distinct tones for win/hint/error
 
 import time, math, random
 import displayio, terminalio
@@ -68,6 +86,7 @@ class hi_lo:
 
         # New game anytime
         if key == self.K_NEW:
+            self._click(key)
             self.new_game()
             return
 
@@ -78,6 +97,7 @@ class hi_lo:
         # Enter
         if key == self.K_ENTER:
             if self.mode == "entry":
+                self._click(key)
                 self._commit_guess()
             return
 
@@ -85,6 +105,7 @@ class hi_lo:
         if self.mode == "entry":
             d = self._digit_for_key(key)
             if d is not None:
+                self._click(key)
                 self._press_digit_feedback(key)
                 if len(self.entry_digits) >= 2:
                     # Keep last two digits (feel like a real 2-digit entry)
@@ -169,15 +190,18 @@ class hi_lo:
         if guess < self.target:
             self._flash_arrow(self.ARROW_UP, self.C_HINT, 1)
             self._set_status(f"{guess} — Higher")
+            self._sound_tie()
         elif guess > self.target:
             self._flash_arrow(self.ARROW_DOWN, self.C_HINT, 1)
             self._set_status(f"{guess} — Lower")
+            self._sound_tie()
         else:
             # Win!
             self._win_cleared = False
             self._flash_arrow(self.ARROW_WIN, self.C_WIN, 3)
             self._set_status(f"Correct! Tries: {self.tries}")
             self.mode = "won"
+            self._sound_win()
             
             try:
                 self.mac.pixels.show()
@@ -287,3 +311,58 @@ class hi_lo:
         else:
             val = self.entry_digits[0] * 10 + self.entry_digits[1]
             self._set_status(f"Guess: {val}")
+            
+    # ---------- sound helpers ----------
+    def _play(self, freq, dur):
+        try:
+            self.mac.play_tone(freq, dur)
+        except AttributeError:
+            try:
+                # fall back to first tone if available
+                self.mac.play_tone(self.tones[0], dur)
+            except Exception:
+                pass
+
+    def _tone_at(self, i, fallback):
+        try:
+            return self.tones[i]
+        except Exception:
+            return fallback[i % len(fallback)]
+
+    def _click(self, key=None):
+        # Default click pitch
+        f = 523  # C5
+
+        if key == self.K_NEW:          # New Game key
+            f = 440                    # A4
+        elif key == self.K_ENTER:      # Enter key
+            f = 659                    # E5
+        elif key is not None:
+            try:
+                if isinstance(self.tones, (list, tuple)) and len(self.tones) > 0:
+                    f = self.tones[key % len(self.tones)]
+            except Exception:
+                pass
+
+        self._play(f, 0.03)
+
+    def _sound_win(self):
+        fallback = [262, 330, 392, 523, 392, 523]  # C4 E4 G4 C5 G4 C5
+        seq = [0, 2, 4, 6, 4, 6]
+        for i in seq:
+            self._play(self._tone_at(i, fallback), 0.2)
+
+    def _sound_lost(self):
+        fallback = [523, 392, 330, 262]  # C5 G4 E4 C4
+        seq = [6, 4, 2, 0]
+        for i in seq:
+            self._play(self._tone_at(i, fallback), 0.3)
+
+    def _sound_tie(self):
+        fallback = [262, 330]  # C4 E4
+        seq = [0]
+        for i in seq:
+            self._play(self._tone_at(i, fallback), 0.15)
+    
+    def _sound_error(self):
+        self._play(220, 0.05)  # A3 low blip

@@ -1,10 +1,38 @@
 # hit_or_miss.py — Master Merlin "Hit or Miss" for Adafruit MacroPad
-# Level 1: one hidden shape (T, V, or I). K11 reveal shows abstract shape only while held.
-# Level 2: three hidden shapes (random types), may overlap at center (K4) only. No reveal on K11.
-# Non-blocking fades for misses; hits remain red.
+# CircuitPython 8.x / 9.x compatible, non-blocking fades and animations
+# Written by Iain Bennett — 2025
+# Inspired by Keith Tanner's Merlin for the Macropad
 #
-# Written by Iain Bennett 2025
-# Flicker-free LED updates + Simon-style start wipe added
+# Hit or Miss is a Master Merlin-style memory and deduction game where the
+# player tries to find hidden shapes on a 3×3 grid. Two levels are available:
+#
+# Level 1:
+#   • One hidden shape (T, V, or I) in a random orientation
+#   • K11 (Reveal) shows an abstract version of the shape only while held
+#
+# Level 2:
+#   • Three hidden shapes of random types
+#   • Shapes may overlap only at the center cell (K4)
+#   • No reveal option on K11
+#
+# Gameplay:
+#   • Press keys K0..K8 to guess cells
+#   • Hits turn red and stay lit
+#   • Misses briefly light blue, then fade out
+#   • Win when all target cells are found
+#
+# Controls:
+#   • K0..K8 — Select grid cells
+#   • K11    — Reveal shape (Level 1 only)
+#   • K9     — New game / return to level select
+#   • K3     — Start Level 1
+#   • K5     — Start Level 2
+#
+# Features:
+#   • Non-blocking LED fades for misses
+#   • Persistent hit indicators
+#   • Level selection with pulsing indicators
+#   • Distinct sounds for hits, misses, errors, and wins
 
 import time
 import math

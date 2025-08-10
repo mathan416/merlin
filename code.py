@@ -1,5 +1,31 @@
-# Merlin emulator launcher (CircuitPython 9.x)
-# Menu -> press encoder to start a game; press again to return to menu.
+# code.py — Merlin emulator launcher for Adafruit MacroPad (CircuitPython 9.x)
+# Originally by Keith Tanner, Updates by Iain Bennett
+#
+# Overview:
+#   Master menu that lets you browse and launch individual Merlin-style games.
+#   Games are imported as classes and instantiated on demand. The launcher
+#   hands the display and input to the active game, then can reclaim control
+#   when you press the encoder switch again.
+#
+# Controls:
+#   • Rotate encoder : Cycle through available games in the menu.
+#   • Press encoder  : Start the highlighted game (from menu) / return to menu (from a game).
+#   • Keys K0–K11    : Passed through to the active game while running.
+#
+# Behavior:
+#   • Shows a splash/logo if present (MerlinChrome.bmp) on the menu screen.
+#   • Performs a palette “wipe” transition before launching most games
+#     (games listed in SKIP_WIPE handle their own intro).
+#   • Each game is created lazily and stored, so returning to it preserves state
+#     unless the game’s own new_game() resets it.
+#   • If a game implements tick(), button(), button_up(), encoderChange(), or
+#     cleanup(), the launcher will call them at appropriate times.
+#
+# Notes:
+#   • Designed for Adafruit MacroPad running CircuitPython 9.x.
+#   • Uses a shared 12-tone scale for sound; individual games may override.
+#   • Brightness and auto_write are normalized when entering/exiting games.
+
 print("Loading Merlin")
 import time
 import displayio
@@ -20,6 +46,7 @@ from hit_or_miss import hit_or_miss
 from three_shells import three_shells
 from match_it import match_it
 from hi_lo import hi_lo
+from pair_off import pair_off
 
 # ---------- Setup hardware ----------
 macropad = MacroPad()
@@ -38,6 +65,7 @@ GAMES_LIST = [
     ("Match it",      lambda: match_it(macropad, tones)),
     ("Mindbender",    lambda: mindbender(macropad, tones)),
     ("Music Machine", lambda: music_machine(macropad, tones)),
+    ("Pair Off",      lambda: pair_off(macropad, tones)),
     ("Simon",         lambda: simon(macropad, tones)),
     ("Snake",         lambda: snake(macropad, tones, False)),
     ("Snake II",      lambda: snake(macropad, tones, True)),

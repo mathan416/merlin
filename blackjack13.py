@@ -1,6 +1,21 @@
 # blackjack13.py — Merlin-style Blackjack 13 for Adafruit MacroPad
-# CircuitPython 8.x / 9.x compatible, non-blocking where it counts
+# CircuitPython 8.x / 9.x compatible, non-blocking animations
 # Written by Iain Bennett — 2025
+# Inspired by Keith Tanner's Merlin for the Macropad
+#
+# Blackjack 13 is a fast-paced, simplified variant of Blackjack where the goal
+# is to get as close to 13 as possible without going over.
+# 
+# Controls:
+#   • K9  – New Game
+#   • K10 – Stand (end your turn, dealer draws)
+#   • K11 – Hit (draw another card)
+# 
+# Features:
+#   • Animated LED sweeps for card deals
+#   • Pulsing LED indicators during endgame
+#   • Non-blocking state machine for smooth gameplay
+#   • Distinct sound cues for clicks, wins, losses, and ties
 
 import time
 import math
@@ -156,7 +171,7 @@ class blackjack13:
             if self.dealer_phase == "resolve":
                 # Decide outcome
                 if self.dealer_total > 13:
-                    self.status.text = "Dealer busts! You win."
+                    self.status.text = "Bust! You win."
                     self._end_round(winner="you")
                 else:
                     if self.dealer_total > self.player_total:

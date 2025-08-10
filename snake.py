@@ -1,6 +1,31 @@
-# snake.py — Nokia-style Snake for Adafruit MacroPad
+# snake.py — Nokia-style Snake / Snake II for Adafruit MacroPad
 # CircuitPython 8.x / 9.x compatible, non-blocking tick-based movement
-# Written by Iain Bennett -  2025
+# Written by Iain Bennett — 2025
+# Inspired by Keith Tanner's Merlin for the Macropad
+#
+# "Snake" and "Snake II" are classic arcade-style games where you guide a growing
+# snake around the keypad, eating food and avoiding collisions with walls or yourself.
+# This implementation supports both Snake I (basic) and Snake II (with wrap-around
+# playfield and potential obstacles, if enabled).
+#
+# Gameplay:
+#   • The snake starts at a set length and moves automatically each tick.
+#   • Eating food causes the snake to grow and score points.
+#   • The game ends if the snake runs into itself or the edges of the playfield
+#     (Snake I) — or into itself only, if wrap-around is enabled (Snake II).
+#
+# Controls:
+#   • Arrow keys mapped to MacroPad buttons for up/down/left/right movement
+#   • K9     = New Game
+#   • K11    = Pause / Resume (if implemented)
+#
+# Features:
+#   • Works for both Snake I and Snake II variants
+#   • Adjustable movement speed via tick rate
+#   • Non-blocking game loop for responsive input
+#   • LED-based grid display for snake body, head, and food
+#   • On-screen title and score tracking
+#   • Distinct tones for eating, losing, and starting
 
 import time
 import math
@@ -412,7 +437,7 @@ class snake:
 
     def _sound_crash(self):
         for f in (196, 130):
-            self._play(f, 0.07)
+            self._play(f, 0.25)
 
     # ---------- High score helpers ----------
     def _load_high_score(self):

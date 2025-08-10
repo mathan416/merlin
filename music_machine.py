@@ -1,6 +1,23 @@
-# music_machine.py — Simple step recorder for Adafruit MacroPad
-# K0..K8 notes, K9 = Reset (no wipe), K10 = Rest, K11 = Play
-# Starts in recording mode: K9 dim white, K11 red, others black
+# music_machine.py — Simple step recorder/sequencer for Adafruit MacroPad
+# Class: music_machine
+# Originally by Keith Tanner, Updates by Iain Bennett
+#
+# Overview:
+#   Record a sequence of notes and rests on the MacroPad, then play it back.
+#   Starts in recording mode with K9 dim white, K11 red, others off. Each note
+#   press is appended to the sequence; playback flashes keys and sounds tones.
+#
+# Controls:
+#   • K0–K8  : Notes (low to high). Adds that note to the sequence and beeps it.
+#   • K10    : Rest (silence). Adds a rest step to the sequence.
+#   • K9     : Reset sequence (does not wipe UI state). Returns to recording.
+#   • K11    : Play the recorded sequence, then return to recording.
+#   • Encoder: Adjust tempo in 5 BPM steps (≈30–300 BPM).
+#
+# Notes:
+#   • Uses an internal simple scale (C-ish) and a silent “rest.”
+#   • Playback briefly lights the corresponding key per step for visual timing.
+#   • Designed for CircuitPython 8.x / 9.x on Adafruit MacroPad.
 
 import time
 

@@ -1,8 +1,29 @@
-#Simon
+# simon.py — Classic “repeat the sequence” game for Adafruit MacroPad
+# Class: simon
+# Originally by Keith Tanner, Updates by Iain Bennett
+#
+# Overview:
+#   Simon generates an ever-growing sequence of keys (K0–K11). Watch and listen
+#   as each step is flashed and beeped, then repeat the sequence exactly.
+#   If you press a wrong key, the round ends and your score is shown on the
+#   keypad; K11 lights to indicate you can start again.
+#
+# Controls:
+#   • K11    : Start / Restart a new game.
+#   • K0–K11 : During play, press to reproduce the sequence step-by-step.
+#   • Encoder: Change tempo in 5 BPM steps.
+#
+# Display & Sound:
+#   • Each step in the sequence lights its key with a themed color and plays a tone.
+#   • On error, the keypad animates your score (length reached before the mistake),
+#     and K11 turns green to prompt a restart.
+#
+# Notes:
+#   • Uses all 12 keys as playable inputs (0–11).
+#   • Designed for CircuitPython MacroPad (8.x / 9.x compatible).
 
-
-from random import randint
 import time
+from random import randint
 
 # init
 # flash the square

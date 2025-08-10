@@ -1,4 +1,39 @@
-# match_it.py — Merlin "Match It" on MacroPad (K0..K8 only, symbols via key LEDs)
+# match_it.py — Merlin "Match It" for Adafruit MacroPad
+# CircuitPython 8.x / 9.x compatible with smooth LED animations and display text
+# Written by Iain Bennett — 2025
+# Inspired by Keith Tanner's Merlin for the Macropad
+#
+# "Match It" is a Merlin-style memory game played entirely on the 3×3 key grid
+# (K0..K8), where players flip two tiles at a time to find matching symbols.
+# Each symbol is represented by a distinct LED color and a short sound motif.
+# One wildcard tile is included that can match with any other symbol.
+#
+# Gameplay:
+#   • The game begins in "preview mode," where players can rotate the encoder
+#     to highlight a key and press it to see its associated symbol animation
+#     and hear its sound.
+#   • Press K11 to start a new randomized game.
+#   • Press K9 to reset back to preview mode at any time.
+#   • In play mode, select two tiles; if they match, they remain solved.
+#     If not, they are hidden again.
+#   • The wildcard instantly completes the pair for whichever symbol it is
+#     flipped with.
+#   • The game ends when all pairs are matched; the score is shown as number
+#     of tries taken.
+#
+# Controls:
+#   • K0..K8 — Select grid tiles
+#   • Encoder — Navigate tiles in preview mode
+#   • K9 — Return to preview mode / new game
+#   • K11 — Start game from preview mode
+#
+# Features:
+#   • Smooth cosine LED pulsing and crossfade animations for symbols
+#   • Animated "wild" tile with rainbow effect
+#   • Per-symbol sound motifs
+#   • On-screen title, status text, and logo display support
+#   • Wildcard matching logic for faster gameplay
+
 import time, math, random
 import displayio, terminalio
 from adafruit_display_text import label

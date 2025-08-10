@@ -1,6 +1,30 @@
 # tictactoe.py — Merlin-style Tic Tac Toe for Adafruit MacroPad
 # CircuitPython 8.x / 9.x compatible, non-blocking animations
-# Written by Iain Bennett - 2025
+# Written by Iain Bennett — 2025
+# Inspired by Keith Tanner's Merlin for the Macropad
+#
+# This is a MacroPad adaptation of the classic Tic Tac Toe game with animated
+# LED feedback, sound effects, and an on-screen status/legend display. Players
+# face off against a simple CPU opponent that can win, block, and play
+# strategically.
+#
+# Gameplay:
+#   • The board is mapped to keys K0–K8, each representing a cell.
+#   • The human always plays RED (blinking LED) and the CPU plays BLUE (steady LED).
+#   • Human and CPU turns are shown on the display and through LED cues.
+#   • The game ends when a player has three in a row or the board is full.
+#
+# Controls:
+#   • K0..K8 — Place a mark in the corresponding board cell
+#   • K9 — New Game (human always starts)
+#   • K10 — Swap starter (toggles who moves first)
+#   • K11 — Trigger CPU move on its turn
+#
+# Features:
+#   • Smooth cosine-based LED pulsing for active player and endgame animations
+#   • Audio feedback for clicks, errors, wins, losses, and ties
+#   • Simple CPU AI with win/block logic and opening strategies
+#   • Legends and status messages on the MacroPad’s display
 
 import time
 import math
@@ -315,8 +339,18 @@ class tictactoe:
     def _play(self, freq, dur):
         try:
             self.mac.play_tone(freq, dur)
+        except AttributeError:
+            try:
+                # fall back to first tone if available
+                self.mac.play_tone(self.tones[0], dur)
+            except Exception:
+                pass
+
+    def _tone_at(self, i, fallback):
+        try:
+            return self.tones[i]
         except Exception:
-            pass
+            return fallback[i % len(fallback)]
 
     def _sound_click(self, ix):
         try:
@@ -326,19 +360,25 @@ class tictactoe:
         self._play(f, 0.03)
 
     def _sound_error(self):
-        self._play(140, 0.08)
+        self._play(220, 0.05)  # A3 low blip
 
     def _sound_win(self):
-        for f in (660, 880, 990):
-            self._play(f, 0.05)
+        fallback = [262, 330, 392, 523, 392, 523]  # C4 E4 G4 C5 G4 C5
+        seq = [0, 2, 4, 6, 4, 6]
+        for i in seq:
+            self._play(self._tone_at(i, fallback), 0.2)
 
     def _sound_lose(self):
-        for f in (440, 330, 220):
-            self._play(f, 0.06)
-
+        fallback = [523, 392, 330, 262]  # C5 G4 E4 C4
+        seq = [6, 4, 2, 0]
+        for i in seq:
+            self._play(self._tone_at(i, fallback), 0.3)
+            
     def _sound_tie(self):
-        for f in (523, 523):
-            self._play(f, 0.05)
+        fallback = [262, 330]  # C4 E4
+        seq = [0]
+        for i in seq:
+            self._play(self._tone_at(i, fallback), 0.15)
 
     # ---------- Endgame Animation (cosine pulses, then final board) ----------
     def _start_end_anim(self, colors, pulses_per_color=1):

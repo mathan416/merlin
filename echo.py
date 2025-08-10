@@ -1,17 +1,23 @@
-#echo
-# 
-# extra buttons NEW GAME, SAME GAME
+# echo.py — Merlin-style memory sequence game for Adafruit MacroPad
+# Class: echo
+# Originally by Keith Tanner, Updates by Iain Bennett
+#
+# Echo is a memory game similar to Simon, where Merlin plays a sequence
+# of tones and lights, and the player must repeat the sequence exactly.
+# The sequence grows in length depending on the player’s chosen difficulty.
+#
+# Controls:
+#   - At start, press keys 1–9 to set puzzle length (sequence size).
+#   - During play, repeat the sequence by pressing keys 1–9 in order.
+#   - Key 9 repeats the same sequence mid-game.
+#   - Key 11 starts a brand-new game.
+#   - Incorrect entries flash red and play an error tone.
+#   - Rotary encoder changes tempo (speed of playback).
+#
+# CircuitPython 8.x / 9.x compatible
 
-# new game: Merlin asks for a length
-# generate random sequence of that length
-# play it
-# user copies it
-# beep on correct, buzz on error
-# show score or make win noise
-
-
-from random import randint
 import time
+from random import randint
 
 # init
 # flash the square

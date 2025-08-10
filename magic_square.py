@@ -1,23 +1,20 @@
-# 0-8 used to draw a square
-# extra buttons NEW GAME, SAME GAME
-
-# goal is [1,1,1,1,0,1,1,1,1]
-# 0 1 2 
-# 3 4 5
-# 6 7 8
-# corner buttons affect the three adjacent lights
-# edge buttons affect the two corners on that edge
-# center button affects all edge buttons
-
-# 0 flips 0,1,3,4
-# 1: 0,1,2
-# 2: 1,2,4,5
-# 3: 0,3,6
-# 4: 1,3,4,5,7
-# 5: 2,5,8
-# 6: 3,4,6,7
-# 7: 6,7,8
-# 8: 4,5,6,7
+# magic_square.py — Merlin-style Magic Square for Adafruit MacroPad
+# Class: magic_square
+# Originally by Keith Tanner, Updates by Iain Bennett
+#
+# Magic Square is a 3×3 light-toggle puzzle. Each of the 9 grid keys (K0–K8)
+# flips a specific pattern of lights. The goal is to reach the target shape:
+# a lit square with the center dark.
+#
+# Controls:
+#   • K0–K8: Toggle lights according to the Merlin pattern for that position.
+#   • K9 (Same Game): Restore and replay the starting configuration.
+#   • K11 (New Game): Start a new random configuration.
+#   • Encoder: (unused)
+#
+# Notes:
+#   • Lights turn green and a victory jingle plays when you win.
+#   • Runs on CircuitPython 8.x / 9.x with Adafruit MacroPad.
 
 from random import randint
 

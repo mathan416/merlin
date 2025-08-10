@@ -1,7 +1,32 @@
 # three_shells.py — Master Merlin "Three Shells" for Adafruit MacroPad
-# K3, K4, K5 are the shells. Skill select uses K0..K8 with a rainbow.
-# Auto-start the round immediately after selecting skill.
-# Written by Iain Bennett - 2025
+# Written by Iain Bennett — 2025
+# Inspired by Keith Tanner's Merlin for the Macropad
+#
+# "Three Shells" is a digital version of the classic shell game, adapted for the MacroPad.
+# The ball is hidden under one of three shells (K3, K4, K5). After shuffling, the player
+# must guess where the ball is. The shuffling speed and number of swaps are determined by
+# the selected skill level.
+#
+# Gameplay:
+#   • At the start of a game, choose a skill level (1–9) using K0..K8. Keys display a
+#     rainbow gradient and pulse effect to indicate selection.
+#   • Once a skill is chosen, the ball briefly appears under one shell, then the shells
+#     are shuffled based on skill level.
+#   • When the shuffle ends, guess the ball’s location by pressing K3, K4, or K5.
+#   • Correct guesses score a point; incorrect guesses reveal the ball in blue while
+#     wrong shells fade out in red.
+#   • The next round starts automatically after a brief pause.
+#
+# Controls:
+#   • K0..K8 — Select skill level (1–9) during skill select mode
+#   • K3, K4, K5 — Guess ball location during guessing phase
+#   • K9 — New Game (return to skill select)
+#
+# Features:
+#   • Skill-based speed and shuffle complexity
+#   • Smooth LED animations for fades, pulses, and swaps
+#   • Auto-start next round after each guess
+#   • Persistent score display during gameplay
 
 import time, math, random
 import displayio, terminalio
