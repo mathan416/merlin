@@ -48,7 +48,7 @@ Merlin Guides:
 | Game Name       | Type / Inspiration          | Difficulty | Summary |
 |-----------------|-----------------------------|------------|---------|
 | **Blackjack 13** | Card game (Merlin)          | ★☆☆        | Get as close to 13 without going over; CPU opponent |
-| **Echo**         | Memory / Sequence (Simon & Merlin)| ★★☆        | Repeat an increasing sequence of tones and lights |
+| **Echo**         | Memory / Sequence (Merlin)| ★★☆        | Repeat an increasing sequence of tones and lights |
 | **Hi Lo**        | Guessing (Master Merlin)    | ★☆☆        | Guess the number; LEDs guide you higher or lower |
 | **Hit or Miss**  | Reaction / Timing (Master Merlin)          | ★★☆        | Press keys quickly when LEDs light up — don’t miss |
 | **Magic Square** | Puzzle (Merlin)             | ★★☆        | Arrange lights into a magic square pattern |
@@ -166,3 +166,19 @@ CPU can win, block, and follow basic strategies. Includes animated endgame pulse
 - tictactoe.py
 - MerlinChrome.bmp     # Merlin-style chrome frame for menu
 - lib/                 # Required Adafruit CircuitPython libraries
+
+## To Dos
+
+- Add Level 2 to Match It 
+- Reconfirm Sounds for all games
+- Add Master Merlin games
+   - Score - Will be based on Music Maker code
+   - Musical Ladder
+   - Patterns - Based on Hit or Miss code
+   - Hot Potato - Based on the Hi/Lo code
+
+## Won't Dos
+
+- 2 Player support for 
+-- Match It
+-- Pair Off
