@@ -58,10 +58,6 @@ class match_it:
         
         # Build UI, then do a boot wipe into preview
         self._build_display()
-        try:
-            self._start_game_wipe()   # blocking boot wipe once
-        except Exception:
-            pass
 
         # Show the persistent title screen, then land in preview
         self._show_title_screen()
@@ -95,7 +91,6 @@ class match_it:
                 return
             elif key == self.K_START:
                 self.mode = "starting"
-                self._start_game_wipe()   # blocking
                 self._enter_play()
                 return
             elif key == self.K_NEW:
@@ -483,26 +478,6 @@ class match_it:
         if sym == self.WILD:
             return self.color_wild
         return self.palette[sym % len(self.palette)]
-
-    def _start_game_wipe(self):
-        wipe = [
-            0xF400FD, 0xDE04EE, 0xC808DE, 0xB20CCF, 0x9C10C0, 0x8614B0,
-            0x6F19A1, 0x591D91, 0x432182, 0x2D2573, 0x172963, 0x012D54
-        ]
-        self.mac.pixels.brightness = self.BRIGHT
-        for x in range(12):
-            self.mac.pixels[x] = 0x000099
-            self._led_show(); time.sleep(0.06)
-            self.mac.pixels[x] = wipe[x]
-            self._led_show()
-        for s in (0.4, 0.2, 0.1, 0.0):
-            for i in range(12):
-                c = wipe[i]
-                r = int(((c >> 16) & 0xFF) * s)
-                g = int(((c >> 8) & 0xFF) * s)
-                b = int((c & 0xFF) * s)
-                self.mac.pixels[i] = (r << 16) | (g << 8) | b
-            self._led_show(); time.sleep(0.02)
 
     def _sound_match(self):
         for f in (660, 880):

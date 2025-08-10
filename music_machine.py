@@ -27,13 +27,6 @@ class music_machine():
         self._claim_leds()
         self.sequence.clear()
         self.gameMode = "recording"
-
-        # (Optional) startup sweep — remove if you want no sweep:
-        for x in range(len(self.colors)):
-            self.macropad.pixels[x] = 0x000099
-            time.sleep(0.1)
-            self.macropad.pixels[x] = self.colors[x]
-
         self._led_state_recording()   # K9 white, K11 red, others black
         self._ready = True            # <- enable playback now that UI is ready
 
@@ -70,11 +63,6 @@ class music_machine():
         # Exit playback: back to recording UI
         self.gameMode = "recording"
         self._led_state_recording()
-
-    def clear_board(self):
-        # Legacy: show palette (unused by default)
-        for x in range(len(self.colors)):
-            self.macropad.pixels[x] = self.colors[x]
 
     # ---------- Input ----------
     def button(self, key):
@@ -122,22 +110,6 @@ class music_machine():
             self.macropad.pixels.show()
         except AttributeError:
             pass
-
-    def _ack_reset(self):
-        # Flash K9 green to acknowledge, clear sequence, restore recording UI
-        self.sequence.clear()
-        self.gameMode = "recording"
-        # Show ack without disturbing other keys
-        old9 = self.macropad.pixels[9]
-        self.macropad.pixels[9] = 0x009900
-        # Optional: quick confirmation tone
-        try:
-            self.macropad.play_tone(523, 0.08)
-        except Exception:
-            time.sleep(0.08)
-        self.macropad.pixels[9] = old9  # back to dim white
-        # Ensure K11 is red and others black
-        self._led_state_recording()
 
     def _blink_key(self, key, color, dur):
         if not (0 <= key <= 11):

@@ -118,9 +118,6 @@ class tictactoe:
         self._show_legends(True)
         self._normal_status("Human to move")
 
-        # Start-game wipe (Simon-style)
-        self._start_game_wipe()
-
         # Switch to the Tic Tac Toe UI group
         try:
             self.mac.display.root_group = self.group  # CP 9.x
@@ -342,37 +339,6 @@ class tictactoe:
     def _sound_tie(self):
         for f in (523, 523):
             self._play(f, 0.05)
-
-    # ---------- Start Game Wipe (Simon-style) ----------
-    def _start_game_wipe(self):
-        """Blue dot sweep, reveal with purple/blue palette + triad, then fade to black."""
-        self.mac.pixels.brightness = self.BRIGHT
-
-        # Same palette Simon uses (purple down to deep blue)
-        wipe_colors = [
-            0xF400FD, 0xDE04EE, 0xC808DE,
-            0xB20CCF, 0x9C10C0, 0x8614B0,
-            0x6F19A1, 0x591D91, 0x432182,
-            0x2D2573, 0x172963, 0x012D54
-        ]
-
-        # Dot sweep over all 12 keys
-        for x in range(12):
-            self.mac.pixels[x] = 0x000099  # blue dot
-            time.sleep(0.1)
-            self.mac.pixels[x] = wipe_colors[x]
-
-        # Fade the palette down so the game UI takes over cleanly
-        for s in (0.4, 0.2, 0.1, 0.0):
-            for i in range(12):
-                c = wipe_colors[i]
-                r = int(((c >> 16) & 0xFF) * s)
-                g = int(((c >> 8) & 0xFF) * s)
-                b = int((c & 0xFF) * s)
-                self.mac.pixels[i] = (r << 16) | (g << 8) | b
-            time.sleep(0.02)
-
-        self._lights_clear()
 
     # ---------- Endgame Animation (cosine pulses, then final board) ----------
     def _start_end_anim(self, colors, pulses_per_color=1):

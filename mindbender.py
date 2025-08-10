@@ -1,14 +1,4 @@
-#echo
-# 
-# extra buttons NEW GAME, SAME GAME
-
-# new game: Merlin asks for a length
-# generate random sequence of that length
-# play it
-# user copies it
-# beep on correct, buzz on error
-# show score or make win noise
-
+#mindbender
 
 from random import randint
 import time
@@ -20,7 +10,6 @@ class mindbender():
     def __init__(self, macropad, tones):
         # shows how the keys affect others
         self.tones = tones
-        self.color = 0xff0000
         self.macropad = macropad
         self.gameMode ="select"
         self.puzzle=[]
@@ -134,7 +123,6 @@ class mindbender():
         #time.sleep(0.5)
         self.macropad.pixels.fill((0,0,0))
         self.player.clear()
-        self.score=0
         self.gameMode ="playing"
         self.clear_board()
         #now play the puzzle

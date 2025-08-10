@@ -46,6 +46,8 @@ games_factories = {name: factory for name, factory in GAMES_LIST}
 game_names = [name for name, _ in GAMES_LIST]
 game_instances = {}  # name -> instance (created on first play)
 
+SKIP_WIPE = {"Echo"}  # games that handle their own intro
+
 # ---------- Menu UI ----------
 def build_menu_group():
     group = displayio.Group()
@@ -89,6 +91,10 @@ def start_game_by_name(name):
     # Let each game manage auto_write itself; just clear first
     macropad.pixels.fill((0, 0, 0))
 
+    # Do the unified wipe unless this game opts out
+    if name not in SKIP_WIPE:
+        play_global_wipe(macropad)
+
     game = game_instances.get(name)
     if game is None:
         game = games_factories[name]()  # create on demand
@@ -101,10 +107,58 @@ def start_game_by_name(name):
     if hasattr(game, "group") and game.group is not None:
         macropad.display.root_group = game.group
 
-    # Clear any lingering menu LEDs
-    #macropad.pixels.fill((0, 0, 0))
     return game
 
+def play_global_wipe(mac):
+    # Match the other games' behavior/timing
+    try:
+        old_auto = mac.pixels.auto_write
+    except AttributeError:
+        old_auto = True
+    try:
+        mac.pixels.auto_write = False
+    except AttributeError:
+        pass
+
+    mac.pixels.brightness = 0.30
+
+    wipe_colors = [
+        0xF400FD, 0xDE04EE, 0xC808DE, 0xB20CCF, 0x9C10C0, 0x8614B0,
+        0x6F19A1, 0x591D91, 0x432182, 0x2D2573, 0x172963, 0x012D54
+    ]
+
+    # Dot sweep over all 12 keys → reveal palette
+    for x in range(12):
+        mac.pixels[x] = 0x000099
+        try: mac.pixels.show()
+        except AttributeError: pass
+        time.sleep(0.06)
+        mac.pixels[x] = wipe_colors[x]
+        try: mac.pixels.show()
+        except AttributeError: pass
+
+    # Fade palette to black
+    for s in (0.4, 0.2, 0.1, 0.0):
+        for i in range(12):
+            c = wipe_colors[i]
+            r = int(((c >> 16) & 0xFF) * s)
+            g = int(((c >> 8)  & 0xFF) * s)
+            b = int(( c        & 0xFF) * s)
+            mac.pixels[i] = (r << 16) | (g << 8) | b
+        try: mac.pixels.show()
+        except AttributeError: pass
+        time.sleep(0.02)
+
+    mac.pixels.fill((0, 0, 0))
+    try: mac.pixels.show()
+    except AttributeError: pass
+
+    # Restore original auto_write
+    try:
+        mac.pixels.auto_write = old_auto
+    except AttributeError:
+        pass
+    
 # ---------- Main loop state ----------
 mode_menu = True
 last_encoder_position = macropad.encoder
@@ -175,3 +229,4 @@ while True:
                         current_game.button_up(key)
             except Exception as e:
                 print("button error:", e)
+                

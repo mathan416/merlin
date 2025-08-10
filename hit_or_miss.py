@@ -14,17 +14,21 @@ import terminalio
 from adafruit_display_text import label
 
 class hit_or_miss:
-
     SHAPES = {
         "V": [{0,4,2}, {6,4,8}, {0,4,6}, {2,4,8}],
         "T": [{0,1,2,4}, {6,7,8,4}, {0,3,6,4}, {2,5,8,4}],
         "I": [{0,1}, {1,2}, {3,4}, {4,5}, {6,7}, {7,8},
               {0,3}, {3,6}, {1,4}, {4,7}, {2,5}, {5,8}],
     }
+    SHAPE_TYPES = ("T", "I", "V")
+    
 
     def __init__(self, macropad, tones):
         self.mac = macropad
         self.tones = tones
+
+        # Setup the shapes
+        self.CANDIDATES = [(s, frozenset(c)) for s in self.SHAPE_TYPES for c in self.SHAPES[s]]
 
         # LED / colors
         self.BRIGHT = 0.30
@@ -36,7 +40,6 @@ class hit_or_miss:
         self.CELLS = tuple(range(9))  # 0..8
         self.K_NEW = 9
         self.K_REVEAL = 11
-        self._reveal_needs_draw = False
         self.revealing = False
 
         # Pulsing
@@ -61,7 +64,7 @@ class hit_or_miss:
         self._build_display()
 
         # Game state
-        self._to_level_select(wipe=False)
+        self._to_level_select()
 
     # ------ Cleanup ------
     def cleanup(self):
@@ -116,7 +119,7 @@ class hit_or_miss:
 
     # ---------------- Public API ----------------
     def new_game(self):
-        self._to_level_select(wipe=True)
+        self._to_level_select()
         self._show()
 
     def button(self, key):
@@ -130,12 +133,12 @@ class hit_or_miss:
                 self.level = 2
                 self._start_round()
             elif key == self.K_NEW:
-                self._to_level_select(wipe=False)  # reflash LEDs
+                self._to_level_select()  # reflash LEDs
             return
 
         # From here: mode == "play" or "won"
         if key == self.K_NEW:
-            self._to_level_select(wipe=False)
+            self._to_level_select()
             return
 
         if self.mode != "play":
@@ -144,7 +147,6 @@ class hit_or_miss:
         # Reveal (Level 1 only) handled on press (start) and release in button_up()
         if key == self.K_REVEAL and self.level == 1:
             self.revealing = True
-            self._reveal_needs_draw = True
             return
 
         # Board presses
@@ -186,9 +188,6 @@ class hit_or_miss:
 
     def tick(self):
         now = time.monotonic()
-
-        if getattr(self, "_wipe_hold_until", 0) > now:
-            return
 
         if self.mode == "level_select":
             self._render_level_select(now)
@@ -262,7 +261,7 @@ class hit_or_miss:
         # Draw LED state immediately
         self._render_game_leds(time.monotonic())
 
-    def _to_level_select(self, wipe=True):
+    def _to_level_select(self):
         # enter level-select mode
         self.mode = "level_select"
         self.level = None
@@ -282,9 +281,6 @@ class hit_or_miss:
         self._lights_clear()
         self._show()
 
-        if wipe:
-            self._start_game_wipe()  # Simon-style intro + short hold
-
     def _update_stats(self):
         # Update display with shots and (optionally) hits
         if self.mode == "play":
@@ -296,13 +292,14 @@ class hit_or_miss:
 
     # ----- Shapes -----
     def _random_shape_L1(self):
-        shape = random.choice(("T","V","I"))
+        shape = random.choice(self.SHAPE_TYPES)
         return shape, set(random.choice(self.SHAPES[shape]))
 
     # Random valid placement for a given shape (list of cell indices)
     def _random_positions_for_shape(self, shape):
         # Return a list (not set) to keep call sites unchanged
-        return list(random.choice(self.SHAPES[shape]))
+        #return list(random.choice(self.SHAPES[shape]))
+        return random.choice(self.SHAPES[shape]) 
 
     def _place_ship_any(self, shape, occupied=None, max_attempts=60):
         if occupied is None:
@@ -323,9 +320,6 @@ class hit_or_miss:
 
     # ----- Rendering -----
     def _render_level_select(self, now):
-        if getattr(self, "_wipe_hold_until", 0) > now:
-            return
-
         # Base: everything off (diffed)
         self._led_fill(0x000000)
 
@@ -341,9 +335,6 @@ class hit_or_miss:
         self._led_show()
 
     def _render_game_leds(self, now):
-        if getattr(self, "_wipe_hold_until", 0) > now:
-            return
-
         # Start from 'off' (diffed)
         self._led_fill(0x000000)
 
@@ -409,24 +400,6 @@ class hit_or_miss:
         self._update_stats()
         self._sound_win()
 
-    # ---------- Start Game Wipe (Simon-style) ----------
-    def _start_game_wipe(self):
-        wipe_colors = [
-            0xF400FD, 0xDE04EE, 0xC808DE,
-            0xB20CCF, 0x9C10C0, 0x8614B0,
-            0x6F19A1, 0x591D91, 0x432182,
-            0x2D2573, 0x172963, 0x012D54
-        ]
-        # Blue dot sweep → palette reveal
-        for x in range(12):
-            self._led_set(x, 0x000099)
-            self._led_show(); time.sleep(0.06)
-            self._led_set(x, wipe_colors[x])
-            self._led_show()
-
-        # Hold the wipe briefly before renderers take over
-        self._wipe_hold_until = time.monotonic() + 0.25
-
     # ----- Helpers -----
     def _lights_clear(self):
         self._led_fill(0x000000)
@@ -470,42 +443,32 @@ class hit_or_miss:
         r = int(r * s); g = int(g * s); b = int(b * s)
         return (r << 16) | (g << 8) | b
 
-    def _all_positions_for_shape(self, shape):
-        return self.SHAPES[shape]
-
     def _place_three_ships_exact(self):
-        # Build a flat candidate list of (shape, cells) and shuffle for variety
-        shapes = ("T", "I", "V")
-        candidates = []
-        for s in shapes:
-            for cells in self._all_positions_for_shape(s):
-                candidates.append((s, set(cells)))
+        # Uses class-level CANDIDATES: [(shape, frozenset(cells)), ...]
+        candidates = list(self.CANDIDATES)  # copy so we can shuffle without mutating the class constant
         random.shuffle(candidates)
 
         result = []
 
         def ok_overlap(cells, occupied):
-            # allow overlap only at center (4)
-            for c in cells:
-                if c in occupied and c != 4:
-                    return False
-            return True
+            # Overlap allowed only at center (4)
+            return all((c == 4 or c not in occupied) for c in cells)
 
         def backtrack(start, occupied):
             if len(result) == 3:
                 return True
             for i in range(start, len(candidates)):
-                s, cells = candidates[i]
+                shape, cells = candidates[i]
                 if ok_overlap(cells, occupied):
-                    result.append((s, cells))
-                    new_occupied = occupied | (cells - {4})
+                    result.append((shape, set(cells)))          # return mutable sets like your callers expect
+                    new_occupied = occupied | (cells - {4})     # track all non-center cells as taken
                     if backtrack(i + 1, new_occupied):
                         return True
                     result.pop()
             return False
 
         if backtrack(0, set()):
-            return result  # list of (shape, set_of_cells)
+            return result    # [(shape, set_of_cells), x3]
         return None
 
     # ----- Sounds -----

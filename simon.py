@@ -17,7 +17,7 @@ class simon():
         0x6f19a1,0x591d91,0x432182,
         0x2d2573,0x172963,0x012d54
         ]
-        self.color = 0xff0000
+
         self.macropad = macropad
         self.gameMode =""
         self.puzzle=[]
@@ -26,25 +26,14 @@ class simon():
         #self.new_game()
 
     def new_game(self):
-        print ("new Simon game")
-        
-        try:
-            self.macropad.pixels.auto_write = True
-        except AttributeError:
-            pass
-        self.macropad.pixels.brightness = 0.30
+        print("new Simon game")
 
-
-        self.gameMode ="playing"
+        # (No need to force auto_write True here; the wipe handles its own state.)
+        self.gameMode = "playing"
         self.puzzle.clear()
-        self.macropad.pixels.fill((0,0,0))
-        # run dots through every active button
-        for x in range (12):
-            self.macropad.pixels[x]=0x000099
-            time.sleep(0.1)
-            self.macropad.pixels[x]=self.colors[x]
-        #clear and light up new/same buttons
-        self.macropad.pixels.fill((0,0,0))
+
+        # Clean slate, then begin the first sequence
+        self.macropad.pixels.fill((0, 0, 0))
         self.play_sequence()
            
     def play_sequence(self):
@@ -76,56 +65,33 @@ class simon():
         #for x in range (32):
             if x==light_count:
                 self.clear_board()
-                #print ("clear")
                 self.macropad.pixels[9]=0x000099
-                #print (x,"blue")
                 time.sleep(0.2)
                 tens = tens+1
-                #self.macropad.pixels[10]=0x0a0014
             elif x==(light_count)*2+1:
                 self.clear_board()
-                #print ("clear")
                 self.macropad.pixels[9]=0x000099
                 self.macropad.pixels[10]=0x000099
-                #print (x,"aka 10 blue")
                 time.sleep(0.2)
                 tens = tens+1
-                #self.macropad.pixels[10]=0x0a0014
             elif x==(light_count)*3+2:
                 self.clear_board()
-                #print ("clear")
                 self.macropad.pixels[9]=0x0a0014
                 self.macropad.pixels[10]=0x000099
-                #print (x,"aka 9 blurple")
                 time.sleep(0.2)
                 tens = tens+1
-                #self.macropad.pixels[10]=0x0a0014
             elif x==(light_count)*4+3:
                 self.clear_board()
-                #print ("clear")
                 self.macropad.pixels[9]=0x0a0014
                 self.macropad.pixels[10]=0x0a0014
-                #print (x,"aka 10 plurple")
                 time.sleep(0.2)
                 tens = tens+1
-                #self.macropad.pixels[10]=0x0a0014
             else:
                 self.macropad.pixels[(x-tens)%light_count]=0x000099
-                #print ((x-tens)%light_count,"blue")
                 time.sleep(0.2)
                 self.macropad.pixels[(x-tens)%light_count]=0x0a0014
-                #print ((x-tens)%light_count,"blurple")
-                
-            
-                
-            
+
         self.macropad.pixels[11]=0x00ff00
-        # show score
-
-            
-    ####    
-   
-
     
         
     
@@ -160,9 +126,6 @@ class simon():
                     self.macropad.play_tone(100, 0.7)
                     self.error()
                     
-                
-            else: # encoder, boring
-                pass
         else:
             #game is over, ignore all but game control buttons
             if key ==11:
@@ -171,7 +134,7 @@ class simon():
     def encoderChange(self,newPosition, oldPosition):
         self.tempo = self.tempo +(newPosition-oldPosition)*5
         print ("new tempo",self.tempo,"bpm")
-            
+       
 # keypress
 # take the key number, pull the modifier array, apply
 # check for win

@@ -70,7 +70,7 @@ class three_shells:
 
     # ---------- Public API ----------
     def new_game(self):
-        self._enter_skill_select(wipe=True)
+        self._enter_skill_select()
         self._show()
 
     def button(self, key):
@@ -86,7 +86,7 @@ class three_shells:
             return
 
         if key == self.K_NEW:
-            self._enter_skill_select(wipe=False)
+            self._enter_skill_select()
             return
 
         if self.mode != "guess":
@@ -145,14 +145,12 @@ class three_shells:
             return
 
     # ---------- Skill select ----------
-    def _enter_skill_select(self, wipe=True):
+    def _enter_skill_select(self):
         self.mode = "skill"
         self.score = 0
         self.rounds = 0
         self._show_drawn = False
         self._all_off()
-        if wipe:
-            self._start_game_wipe()     # only if requested
         self.status.text = f"Skill: {self.skill}"
         self._render_skill(time.monotonic())
         self._show()
@@ -291,38 +289,6 @@ class three_shells:
         self.mac.pixels[keys[1]] = self.C_WHITE
         self._led_show()
         self.phase_until = now + self.SWAP_FLASH_TIME
-
-    # ---------- Start Game Wipe (Simon-style) ----------
-    def _start_game_wipe(self):
-        self.mac.pixels.brightness = self.BRIGHT
-
-        wipe_colors = [
-            0xF400FD, 0xDE04EE, 0xC808DE,
-            0xB20CCF, 0x9C10C0, 0x8614B0,
-            0x6F19A1, 0x591D91, 0x432182,
-            0x2D2573, 0x172963, 0x012D54
-        ]
-
-        # Dot sweep over all 12 keys → reveal palette
-        for x in range(12):
-            self.mac.pixels[x] = 0x000099
-            self._led_show()
-            time.sleep(0.06)
-            self.mac.pixels[x] = wipe_colors[x % 12]
-            self._led_show()
-
-        # Fade palette to black (so gradient/state that follows is clean)
-        for s in (0.4, 0.2, 0.1, 0.0):
-            for i in range(12):
-                c = wipe_colors[i % 12]
-                r = int(((c >> 16) & 0xFF) * s)
-                g = int(((c >> 8) & 0xFF) * s)
-                b = int((c & 0xFF) * s)
-                self.mac.pixels[i] = (r << 16) | (g << 8) | b
-            self._led_show()
-            time.sleep(0.02)
-
-        # Leave all off; next renderer (_render_skill) will take over.
 
     # ---------- Swap plan ----------
     def _make_swaps(self, n):

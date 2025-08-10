@@ -15,12 +15,9 @@ class snake:
         self.mac = macropad
         self.tones = tones
         self.wraparound = wraparound
-        self._intro_done = False
-        self._just_finished = False 
 
         # Make LED animations smooth by batching updates
         self.BRIGHT = 0.30
-        self._wipe_hold_until = 0.0
 
         # LED backbuffer + smooth updates
         try:
@@ -37,16 +34,7 @@ class snake:
         # ---- LED / color config ----
         self.COLOR_SNAKE = 0x00FF00  # Green (direction LEDs)
         self.COLOR_PAUSE = 0xFFFF00  # Yellow (pause)
-        self.COLOR_FOOD  = 0xFFFFFF  # White (food)
         self.COLOR_BG    = 0x000000
-
-        # Wipe palette (Simon-style)
-        self.WIPE_COLORS = [
-            0xF400FD, 0xDE04EE, 0xC808DE,
-            0xB20CCF, 0x9C10C0, 0x8614B0,
-            0x6F19A1, 0x591D91, 0x432182,
-            0x2D2573, 0x172963, 0x012D54
-        ]
 
         # Buttons
         self.K_NEW   = 0   # K0  : New (only at game over)
@@ -157,12 +145,6 @@ class snake:
     def new_game(self):
         print("new Snake" + (" II" if self.wraparound else ""))
         self._lights_clear()
-        # Play the wipe only on first-ever launch, not after pressing New
-        if (not self._intro_done) and (not self._just_finished):
-            self._start_game_wipe()
-            self._intro_done = True
-        self._just_finished = False         # clear the sentinel now
-
         self._reset_state()
         self._show_group()
 
@@ -330,13 +312,6 @@ class snake:
             for x in range(bw):
                 self.board_bitmap[x, y] = 0  # background
 
-    def _fill_cell(self, cx, cy, color_index):
-        ox = cx * self.CELL
-        oy = cy * self.CELL
-        for y in range(oy, oy + self.CELL):
-            for x in range(ox, ox + self.CELL):
-                self.board_bitmap[x, y] = color_index
-
     # Write by palette index directly (fast small edits)
     def _set_cell_index(self, cx, cy, idx):
         ox = cx * self.CELL
@@ -357,10 +332,6 @@ class snake:
     # _render_controls(now): replace all direct writes with _led_set/_led_fill and finish with _led_show()
     def _render_controls(self, now):
         
-        # Let the wipe palette sit for a moment after the triad
-        if now < self._wipe_hold_until:
-            return
-
         # Start with everything off
         self._led_fill(0x000000)
 
@@ -443,25 +414,6 @@ class snake:
         for f in (196, 130):
             self._play(f, 0.07)
 
-    # ---------- Start Game Wipe ----------
-    # _start_game_wipe(): replace per-pixel direct writes with _led_* helpers
-    def _start_game_wipe(self):
-        self.mac.pixels.brightness = self.BRIGHT
-
-        # Blue dot sweep → reveal palette; DO NOT clear the other keys each step
-        for x in range(12):
-            # Show blue dot on this key
-            self.mac.pixels[x] = 0x000099
-            self._pixels_show()
-            time.sleep(0.06)
-            # Replace dot with the final palette color for this key
-            self.mac.pixels[x] = self.WIPE_COLORS[x]
-            self._pixels_show()
-
-        # IMPORTANT: Do not fade or clear here — leave palette showing.
-        # Hold the palette on for a brief moment so it’s visible before tick() takes over.
-        self._wipe_hold_until = time.monotonic() + 0.35  # tweak 0.25–0.5s to taste
-
     # ---------- High score helpers ----------
     def _load_high_score(self):
         try:
@@ -488,35 +440,10 @@ class snake:
         b = color & 0xFF
         r = int(r * s); g = int(g * s); b = int(b * s)
         return (r << 16) | (g << 8) | b
-
-    def _blend(self, c1, c2, t):
-        r1, g1, b1 = (c1 >> 16) & 0xFF, (c1 >> 8) & 0xFF, c1 & 0xFF
-        r2, g2, b2 = (c2 >> 16) & 0xFF, (c2 >> 8) & 0xFF, c2 & 0xFF
-        r = int(r1 + (r2 - r1) * t)
-        g = int(g1 + (g2 - g1) * t)
-        b = int(b1 + (b2 - b1) * t)
-        return (r << 16) | (g << 8) | b
                
     def _lights_clear(self):
         self._led_fill(0x000000)
         self._led_show(force=True)
-
-    def _pixels_show(self):
-        try:
-            self.mac.pixels.show()
-        except AttributeError:
-            pass
-        
-    def _push_leds(self, new):
-        # only write pixels that actually changed
-        changed = False
-        for i, c in enumerate(new):
-            if c != self._led[i]:
-                self.mac.pixels[i] = c
-                self._led[i] = c
-                changed = True
-        if changed:
-            self._pixels_show()
             
     # --- add these helper methods somewhere in the class (e.g., near other helpers) ---
     def _led_set(self, i, color):

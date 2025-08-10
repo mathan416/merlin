@@ -20,14 +20,6 @@ class blackjack13:
         self.COLOR_HUMAN = 0xFF0000  # RED player
         self.COLOR_CPU   = 0x0000FF  # BLUE dealer
 
-        # Wipe palette (Simon-style)
-        self.WIPE_COLORS = [
-            0xF400FD, 0xDE04EE, 0xC808DE,
-            0xB20CCF, 0x9C10C0, 0x8614B0,
-            0x6F19A1, 0x591D91, 0x432182,
-            0x2D2573, 0x172963, 0x012D54
-        ]
-
         # Pulsing/frame timings
         self.PULSE_FRAME_DT   = 0.03
         self.PULSE_PHASE_STEP = 0.05
@@ -95,8 +87,6 @@ class blackjack13:
         print("new Blackjack 13")
         self.reset_state()
         self._lights_clear()
-        # Start-game wipe (Simon-style), then show UI
-        self._start_game_wipe()
         self._show()
 
     def button(self, key_number):
@@ -206,10 +196,10 @@ class blackjack13:
 
         # deal anim
         self.deal_anim_active = False
-        self.deal_for = None      # "player" or "dealer"
+        #self.deal_for = None      # "player" or "dealer"
         self.deal_value = 0
-        self.deal_idx = 0
-        self.deal_last = 0.0
+        #self.deal_idx = 0
+        #self.deal_last = 0.0
 
         # dealer state machine
         self.dealer_phase = "idle"  # "idle" | "drawing" | "resolve" | "done"
@@ -389,26 +379,6 @@ class blackjack13:
             for i in range(9):
                 self.mac.pixels[i] = 0x000000
 
-    # --------- Start Game Wipe (Simon-style) ----------
-    def _start_game_wipe(self):
-        self.mac.pixels.brightness = self.BRIGHT
-        # Blue dot sweep; then reveal palette; then triad (0.5s each to match Simon/TTT); then fade
-        for x in range(12):
-            self.mac.pixels[x] = 0x000099
-            time.sleep(0.06)
-            self.mac.pixels[x] = self.WIPE_COLORS[x]
-
-        # fade palette to black
-        for s in (0.4, 0.2, 0.1, 0.0):
-            for i in range(12):
-                c = self.WIPE_COLORS[i]
-                r = int(((c >> 16) & 0xFF) * s)
-                g = int(((c >> 8) & 0xFF) * s)
-                b = int((c & 0xFF) * s)
-                self.mac.pixels[i] = (r << 16) | (g << 8) | b
-            time.sleep(0.02)
-        self._lights_clear()
-
     # --------- Endgame animation ----------
     def _start_end_anim(self, colors, pulses_per_color=1):
         self.anim_mode = "endgame"
@@ -444,7 +414,6 @@ class blackjack13:
         self.cpu_line.text = "CPU: —"
         self.status.text = "Blackjack 13"
         self._lights_clear()
-        self._start_game_wipe()
         self._show()
 
     def _end_round(self, winner):
