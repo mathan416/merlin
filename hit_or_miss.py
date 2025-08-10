@@ -4,6 +4,7 @@
 # Non-blocking fades for misses; hits remain red.
 #
 # Written by Iain Bennett 2025
+# Flicker-free LED updates + Simon-style start wipe added
 
 import time
 import math
@@ -13,7 +14,7 @@ import terminalio
 from adafruit_display_text import label
 
 class hit_or_miss:
-    
+
     SHAPES = {
         "V": [{0,4,2}, {6,4,8}, {0,4,6}, {2,4,8}],
         "T": [{0,1,2,4}, {6,7,8,4}, {0,3,6,4}, {2,5,8,4}],
@@ -35,6 +36,8 @@ class hit_or_miss:
         self.CELLS = tuple(range(9))  # 0..8
         self.K_NEW = 9
         self.K_REVEAL = 11
+        self._reveal_needs_draw = False
+        self.revealing = False
 
         # Pulsing
         self.SLOW_PULSE_HZ = 0.8
@@ -43,11 +46,39 @@ class hit_or_miss:
         self.miss_fades = {}   # non-blocking fade out for misses
         self.MISS_FADE_DUR = 0.6
 
+        # --- LED driver (anti-flicker) ---
+        self._led = [0] * 12          # cached colors
+        self._led_dirty = False
+        self._last_led_show = 0.0
+        self.LED_FRAME_DT = 1.0 / 30.0   # cap ~30 FPS
+        try:
+            self.mac.pixels.auto_write = False
+        except AttributeError:
+            pass
+        self.mac.pixels.brightness = self.BRIGHT
+
         # Display
         self._build_display()
 
         # Game state
-        self._to_level_select()
+        self._to_level_select(wipe=False)
+
+    # ------ Cleanup ------
+    def cleanup(self):
+        # Reset transient state so nothing lingers after exit
+        self.miss_fades.clear()
+        self.revealing = False
+        try:
+            self.mac.pixels.auto_write = True
+        except AttributeError:
+            pass
+        for i in range(12):
+            self.mac.pixels[i] = 0x000000
+        try:
+            self.mac.pixels.show()
+        except AttributeError:
+            pass
+        # Let code.py reclaim the display; no root_group change needed here.
 
     # ---------------- Display ----------------
     def _build_display(self):
@@ -85,7 +116,7 @@ class hit_or_miss:
 
     # ---------------- Public API ----------------
     def new_game(self):
-        self._to_level_select()
+        self._to_level_select(wipe=True)
         self._show()
 
     def button(self, key):
@@ -99,12 +130,12 @@ class hit_or_miss:
                 self.level = 2
                 self._start_round()
             elif key == self.K_NEW:
-                self._to_level_select()  # reflash LEDs
+                self._to_level_select(wipe=False)  # reflash LEDs
             return
 
         # From here: mode == "play" or "won"
         if key == self.K_NEW:
-            self._to_level_select()
+            self._to_level_select(wipe=False)
             return
 
         if self.mode != "play":
@@ -113,6 +144,7 @@ class hit_or_miss:
         # Reveal (Level 1 only) handled on press (start) and release in button_up()
         if key == self.K_REVEAL and self.level == 1:
             self.revealing = True
+            self._reveal_needs_draw = True
             return
 
         # Board presses
@@ -128,12 +160,14 @@ class hit_or_miss:
             if key in target_cells:
                 # HIT
                 self.hits.add(key)
-                self.mac.pixels[key] = self.COLOR_HIT
+                self._led_set(key, self.COLOR_HIT)  # immediate visual
+                self._led_show()
                 self._sound_hit()
             else:
                 # MISS — start fade (blue -> black), non-blocking
                 self.miss_fades[key] = (now, self.MISS_FADE_DUR)
-                self.mac.pixels[key] = self.COLOR_MISS
+                self._led_set(key, self.COLOR_MISS)  # immediate blue, fade next frames
+                self._led_show()
                 self._sound_miss()
 
             self._update_stats()
@@ -153,16 +187,20 @@ class hit_or_miss:
     def tick(self):
         now = time.monotonic()
 
+        if getattr(self, "_wipe_hold_until", 0) > now:
+            return
+
         if self.mode == "level_select":
             self._render_level_select(now)
             return
 
-        # Gameplay / won
-        self._render_game_leds(now)
-
-        # If revealing (L1 only), temporarily display abstract shape
+        # While revealing (Level 1 only), draw ONLY the overlay each loop.
         if self.mode == "play" and self.level == 1 and self.revealing:
             self._render_reveal_overlay()
+            return
+
+        # Normal gameplay/won frame
+        self._render_game_leds(now)
 
     # ---------------- Internals ----------------
     def _start_round(self):
@@ -224,7 +262,7 @@ class hit_or_miss:
         # Draw LED state immediately
         self._render_game_leds(time.monotonic())
 
-    def _to_level_select(self):
+    def _to_level_select(self, wipe=True):
         # enter level-select mode
         self.mode = "level_select"
         self.level = None
@@ -234,19 +272,18 @@ class hit_or_miss:
         self.revealing = False
         self.miss_fades.clear()
 
-        # ensure these always exist
         self.solution_cells = set()
         self.union_cells = set()
         self.shape_type = None
-    
-        # UI text (two lines so it fits)
-        self.line1.text = "Select Level:"
-        self.line2.text = "K3=L1   K5=L2"
 
-        # LEDs off; level-select renderer will pulse K3/K5
+        self.line1.text = "\nSelect Level:"
+        self.line2.text = "\nL1    L2"
+
         self._lights_clear()
         self._show()
-        
+
+        if wipe:
+            self._start_game_wipe()  # Simon-style intro + short hold
 
     def _update_stats(self):
         # Update display with shots and (optionally) hits
@@ -257,7 +294,7 @@ class hit_or_miss:
             self.line1.text = "You Won in"
             self.line2.text = "{} shots!".format(self.shots)
 
-    # ----- Shapes -----   
+    # ----- Shapes -----
     def _random_shape_L1(self):
         shape = random.choice(("T","V","I"))
         return shape, set(random.choice(self.SHAPES[shape]))
@@ -286,45 +323,50 @@ class hit_or_miss:
 
     # ----- Rendering -----
     def _render_level_select(self, now):
-        self.mac.pixels.brightness = self.BRIGHT
-        for i in range(12):
-            self.mac.pixels[i] = 0x000000
+        if getattr(self, "_wipe_hold_until", 0) > now:
+            return
 
+        # Base: everything off (diffed)
+        self._led_fill(0x000000)
+
+        # Pulse K3 and K5 only
         pulse = self._pulse(now)
         green_dim = self._scale(0x00FF00, 0.20 + 0.60 * pulse)
-        self.mac.pixels[3] = green_dim  # K3
-        self.mac.pixels[5] = green_dim  # K5
+        self._led_set(3, green_dim)
+        self._led_set(5, green_dim)
 
         # K11 OFF during level select
-        self.mac.pixels[self.K_REVEAL] = 0x000000
+        self._led_set(self.K_REVEAL, 0x000000)
 
-        self._show_pixels()
+        self._led_show()
 
     def _render_game_leds(self, now):
-        self.mac.pixels.brightness = self.BRIGHT
-        for i in range(12):
-            self.mac.pixels[i] = 0x000000
+        if getattr(self, "_wipe_hold_until", 0) > now:
+            return
+
+        # Start from 'off' (diffed)
+        self._led_fill(0x000000)
 
         # hits stay red
         for k in self.hits:
-            self.mac.pixels[k] = self.COLOR_HIT
+            self._led_set(k, self.COLOR_HIT)
 
         # misses fade out (blue -> black)
         self._update_miss_fades(now)
 
         # K11: dim blue ONLY while actively playing Level 1
         if self.mode == "play" and self.level == 1:
-            self.mac.pixels[self.K_REVEAL] = self._scale(self.COLOR_MISS, 0.12)
+            self._led_set(self.K_REVEAL, self._scale(self.COLOR_MISS, 0.12))
         else:
-            self.mac.pixels[self.K_REVEAL] = 0x000000
+            self._led_set(self.K_REVEAL, 0x000000)
 
         # New button: pulse when won, dim otherwise
         if self.mode == "won":
-            self.mac.pixels[self.K_NEW] = self._scale(0xFFFFFF, 0.65 + 0.35 * self._pulse(now))
+            self._led_set(self.K_NEW, self._scale(0xFFFFFF, 0.65 + 0.35 * self._pulse(now)))
         else:
-            self.mac.pixels[self.K_NEW] = self._scale(0xFFFFFF, 0.10)
+            self._led_set(self.K_NEW, self._scale(0xFFFFFF, 0.10))
 
-        self._show_pixels()
+        self._led_show()
 
     def _render_reveal_overlay(self):
         # Level 1 only: show abstract shape while K11 held
@@ -337,14 +379,13 @@ class hit_or_miss:
         else:  # "I"
             overlay = {1,4}
 
-        for i in self.CELLS:
-            self.mac.pixels[i] = 0x000000
+        self._led_fill(0x000000)
         for i in overlay:
-            self.mac.pixels[i] = 0xFFFFFF
+            self._led_set(i, 0xFFFFFF)
 
         # Keep K11 dim blue during reveal to signal "hold"
-        self.mac.pixels[self.K_REVEAL] = self._scale(self.COLOR_MISS, 0.12)
-        self._show_pixels()
+        self._led_set(self.K_REVEAL, self._scale(self.COLOR_MISS, 0.12))
+        self._led_show()
 
     def _update_miss_fades(self, now):
         # For each fading miss, compute progress and set scaled blue
@@ -356,10 +397,10 @@ class hit_or_miss:
                 continue
             # cosine ease-out from 1 -> 0
             s = 0.5 * (1 + math.cos(t * math.pi))  # 1..0
-            self.mac.pixels[k] = self._scale(self.COLOR_MISS, 0.15 + 0.35 * s)
+            self._led_set(k, self._scale(self.COLOR_MISS, 0.15 + 0.35 * s))
         for k in to_delete:
             # ensure fully off at end
-            self.mac.pixels[k] = 0x000000
+            self._led_set(k, 0x000000)
             del self.miss_fades[k]
 
     # ----- Win / lose -----
@@ -368,14 +409,52 @@ class hit_or_miss:
         self._update_stats()
         self._sound_win()
 
+    # ---------- Start Game Wipe (Simon-style) ----------
+    def _start_game_wipe(self):
+        wipe_colors = [
+            0xF400FD, 0xDE04EE, 0xC808DE,
+            0xB20CCF, 0x9C10C0, 0x8614B0,
+            0x6F19A1, 0x591D91, 0x432182,
+            0x2D2573, 0x172963, 0x012D54
+        ]
+        # Blue dot sweep → palette reveal
+        for x in range(12):
+            self._led_set(x, 0x000099)
+            self._led_show(); time.sleep(0.06)
+            self._led_set(x, wipe_colors[x])
+            self._led_show()
+
+        # Hold the wipe briefly before renderers take over
+        self._wipe_hold_until = time.monotonic() + 0.25
+
     # ----- Helpers -----
     def _lights_clear(self):
-        self.mac.pixels.brightness = self.BRIGHT
-        for i in range(12):
-            self.mac.pixels[i] = 0x000000
-        self._show_pixels()
+        self._led_fill(0x000000)
+        self._led_show()
 
-    def _show_pixels(self):
+    # ---------- LED helpers (diff + rate-limit) ----------
+    def _led_set(self, idx, color):
+        if 0 <= idx < 12 and self._led[idx] != color:
+            self._led[idx] = color
+            self._led_dirty = True
+
+    def _led_fill(self, color):
+        changed = False
+        for i in range(12):
+            if self._led[i] != color:
+                self._led[i] = color
+                changed = True
+        if changed:
+            self._led_dirty = True
+
+    def _led_show(self):
+        now = time.monotonic()
+        if not self._led_dirty or (now - self._last_led_show) < self.LED_FRAME_DT:
+            return
+        for i, c in enumerate(self._led):
+            self.mac.pixels[i] = c
+        self._last_led_show = now
+        self._led_dirty = False
         try:
             self.mac.pixels.show()
         except AttributeError:
@@ -393,7 +472,7 @@ class hit_or_miss:
 
     def _all_positions_for_shape(self, shape):
         return self.SHAPES[shape]
-    
+
     def _place_three_ships_exact(self):
         # Build a flat candidate list of (shape, cells) and shuffle for variety
         shapes = ("T", "I", "V")
@@ -428,7 +507,7 @@ class hit_or_miss:
         if backtrack(0, set()):
             return result  # list of (shape, set_of_cells)
         return None
-    
+
     # ----- Sounds -----
     def _play(self, f, d):
         try:

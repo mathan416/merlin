@@ -31,11 +31,15 @@ class echo():
         0xff9900,0x000,0x00ff00]
         self.tempo = 150 # bpm
         self.player = []
-        print ("Echo is initialized")
         #self.new_game()
 
     def new_game(self):
         print ("new Echo game")
+        try:
+            self.macropad.pixels.auto_write = True
+        except AttributeError:
+            pass
+        self.macropad.pixels.brightness = 0.30
         self.puzzle.clear()
         self.player.clear()
         self.gameMode ="select"
@@ -49,9 +53,6 @@ class echo():
         
     def start_game(self, length):
         print ("player has selected", length)
-        self.macropad.play_tone(self.tones[0], 0.5)
-        self.macropad.play_tone(self.tones[2], 0.5)
-        self.macropad.play_tone(self.tones[4], 0.5)
         #clear and light up new/same buttons
         self.macropad.pixels.fill((0,0,0))
         time.sleep(0.5)

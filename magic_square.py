@@ -43,19 +43,20 @@ class magic_square():
         self.tones = tones
         self.color = 0xff0000
         self.macropad = macropad
-        print ("Magic Square is initialized")
         #self.new_game()
 
     def new_game(self):
         print ("new Magic Square game")
+        try:
+            self.macropad.pixels.auto_write = True
+        except AttributeError:
+            pass
+        self.macropad.pixels.brightness = 0.30
         # show a square for fun
         self.macropad.pixels.fill((0,0,0))
         self.color = 0x0009ff
         self.state = 0b111101111
         self.show_leds()
-        self.macropad.play_tone(self.tones[0], 0.5)
-        self.macropad.play_tone(self.tones[2], 0.5)
-        self.macropad.play_tone(self.tones[4], 0.5)
         self.color = 0xff0000
         #generate a new matrix
         for x in range(8):

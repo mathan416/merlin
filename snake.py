@@ -1,6 +1,6 @@
 # snake.py — Nokia-style Snake for Adafruit MacroPad
 # CircuitPython 8.x / 9.x compatible, non-blocking tick-based movement
-# Written by Iain Bennett & ChatGPT — 2025
+# Written by Iain Bennett -  2025
 
 import time
 import math
@@ -15,15 +15,26 @@ class snake:
         self.mac = macropad
         self.tones = tones
         self.wraparound = wraparound
+        self._intro_done = False
+        self._just_finished = False 
 
         # Make LED animations smooth by batching updates
+        self.BRIGHT = 0.30
+        self._wipe_hold_until = 0.0
+
+        # LED backbuffer + smooth updates
         try:
             self.mac.pixels.auto_write = False
         except AttributeError:
             pass
+        self.mac.pixels.brightness = self.BRIGHT
+        self._led = [0] * 12          # backbuffer
+        self._led_dirty = False
+        self._led_fps = 30            # cap refresh rate
+        self._led_min_dt = 1.0 / self._led_fps
+        self._last_led_push = time.monotonic()
 
         # ---- LED / color config ----
-        self.BRIGHT = 0.30
         self.COLOR_SNAKE = 0x00FF00  # Green (direction LEDs)
         self.COLOR_PAUSE = 0xFFFF00  # Yellow (pause)
         self.COLOR_FOOD  = 0xFFFFFF  # White (food)
@@ -73,6 +84,13 @@ class snake:
         self._build_display()
         self._reset_state()
 
+    # ------ Cleanup ------
+    def cleanup(self):
+        try:
+            self.mac.pixels.auto_write = True
+        except AttributeError:
+            pass
+        
     # ---------- Display ----------
     def _build_display(self):
         W, H = self.mac.display.width, self.mac.display.height
@@ -139,10 +157,14 @@ class snake:
     def new_game(self):
         print("new Snake" + (" II" if self.wraparound else ""))
         self._lights_clear()
+        # Play the wipe only on first-ever launch, not after pressing New
+        if (not self._intro_done) and (not self._just_finished):
+            self._start_game_wipe()
+            self._intro_done = True
+        self._just_finished = False         # clear the sentinel now
+
         self._reset_state()
-        self._start_game_wipe()
         self._show_group()
-        # Initial draw is done in _reset_state()
 
     def button(self, key):
         now = time.monotonic()
@@ -332,48 +354,49 @@ class snake:
             self._set_cell_index(sx, sy, 2 if i == 0 else 1)
 
     # ---------- Key LEDs ----------
+    # _render_controls(now): replace all direct writes with _led_set/_led_fill and finish with _led_show()
     def _render_controls(self, now):
-        self.mac.pixels.brightness = self.BRIGHT
+        
+        # Let the wipe palette sit for a moment after the triad
+        if now < self._wipe_hold_until:
+            return
 
         # Start with everything off
-        for i in range(12):
-            self.mac.pixels[i] = 0x000000
+        self._led_fill(0x000000)
 
         if self.game_over:
-            # K0: cosine pulse inviting a new game
             pulse = self._pulse(now)
-            self.mac.pixels[self.K_NEW] = self._scale(0xFFFFFF, pulse)
-            return self._pixels_show()
+            self._led_set(self.K_NEW, self._scale(0xFFFFFF, pulse))
+            return self._led_show()
 
         # Movement keys: static dim green
+        dim_g = self._scale(self.COLOR_SNAKE, 0.18)
         for k in self.DIR_KEYS:
-            self.mac.pixels[k] = self._scale(self.COLOR_SNAKE, 0.18)
+            self._led_set(k, dim_g)
 
-        # Current direction: static bright green
+        # Current direction: bright green
         dir_key = self._key_for_dir(self.dir)
         if dir_key is not None:
-            self.mac.pixels[dir_key] = self._scale(self.COLOR_SNAKE, 0.9)
+            self._led_set(dir_key, self._scale(self.COLOR_SNAKE, 0.9))
 
         # Pause indicator
         if self.paused:
-            # K2 cosine pulse while paused
             pulse = self._pulse(now)
-            self.mac.pixels[self.K_PAUSE] = self._scale(self.COLOR_PAUSE, pulse)
+            self._led_set(self.K_PAUSE, self._scale(self.COLOR_PAUSE, pulse))
         else:
-            # Playing: steady dim white on K2 (no flicker)
-            self.mac.pixels[self.K_PAUSE] = self._scale(0xFFFFFF, 0.12)
+            self._led_set(self.K_PAUSE, self._scale(0xFFFFFF, 0.12))
 
-        # Flash overlays (accepted / illegal inputs) temporarily override
+        # Flash overlays
         to_del = []
         for k, (until, col) in self.flash.items():
             if now <= until:
-                self.mac.pixels[k] = col
+                self._led_set(k, col)
             else:
                 to_del.append(k)
         for k in to_del:
             del self.flash[k]
 
-        self._pixels_show()
+        self._led_show()
 
     def _key_for_dir(self, d):
         if d == (0, -1): return self.K_UP
@@ -388,6 +411,7 @@ class snake:
     # ---------- Game over ----------
     def _on_game_over(self):
         self.game_over = True
+        self._just_finished = True 
         title = "Snake II" if self.wraparound else "Snake"
         self.status.text = title + " Game Over"
         self._sound_crash()
@@ -420,34 +444,23 @@ class snake:
             self._play(f, 0.07)
 
     # ---------- Start Game Wipe ----------
+    # _start_game_wipe(): replace per-pixel direct writes with _led_* helpers
     def _start_game_wipe(self):
         self.mac.pixels.brightness = self.BRIGHT
-        # Blue dot sweep → reveal palette → triad (0.5s each) → fade
+
+        # Blue dot sweep → reveal palette; DO NOT clear the other keys each step
         for x in range(12):
+            # Show blue dot on this key
             self.mac.pixels[x] = 0x000099
             self._pixels_show()
             time.sleep(0.06)
+            # Replace dot with the final palette color for this key
             self.mac.pixels[x] = self.WIPE_COLORS[x]
             self._pixels_show()
 
-        try:
-            if len(self.tones) >= 5:
-                self.mac.play_tone(self.tones[0], 0.5)
-                self.mac.play_tone(self.tones[2], 0.5)
-                self.mac.play_tone(self.tones[4], 0.5)
-        except Exception:
-            pass
-
-        for s in (0.4, 0.2, 0.1, 0.0):
-            for i in range(12):
-                c = self.WIPE_COLORS[i]
-                r = int(((c >> 16) & 0xFF) * s)
-                g = int(((c >> 8) & 0xFF) * s)
-                b = int((c & 0xFF) * s)
-                self.mac.pixels[i] = (r << 16) | (g << 8) | b
-            self._pixels_show()
-            time.sleep(0.02)
-        self._lights_clear()
+        # IMPORTANT: Do not fade or clear here — leave palette showing.
+        # Hold the palette on for a brief moment so it’s visible before tick() takes over.
+        self._wipe_hold_until = time.monotonic() + 0.35  # tweak 0.25–0.5s to taste
 
     # ---------- High score helpers ----------
     def _load_high_score(self):
@@ -483,15 +496,56 @@ class snake:
         g = int(g1 + (g2 - g1) * t)
         b = int(b1 + (b2 - b1) * t)
         return (r << 16) | (g << 8) | b
-
+               
     def _lights_clear(self):
-        self.mac.pixels.brightness = self.BRIGHT
-        for i in range(12):
-            self.mac.pixels[i] = 0x000000
-        self._pixels_show()
+        self._led_fill(0x000000)
+        self._led_show(force=True)
 
     def _pixels_show(self):
         try:
             self.mac.pixels.show()
         except AttributeError:
             pass
+        
+    def _push_leds(self, new):
+        # only write pixels that actually changed
+        changed = False
+        for i, c in enumerate(new):
+            if c != self._led[i]:
+                self.mac.pixels[i] = c
+                self._led[i] = c
+                changed = True
+        if changed:
+            self._pixels_show()
+            
+    # --- add these helper methods somewhere in the class (e.g., near other helpers) ---
+    def _led_set(self, i, color):
+        if 0 <= i < 12:
+            if self._led[i] != color:
+                self._led[i] = color
+                self._led_dirty = True
+
+    def _led_fill(self, color):
+        changed = False
+        for i in range(12):
+            if self._led[i] != color:
+                self._led[i] = color
+                changed = True
+        if changed:
+            self._led_dirty = True
+
+    def _led_show(self, force=False):
+        now = time.monotonic()
+        if not force and (now - self._last_led_push) < self._led_min_dt:
+            return
+        if not self._led_dirty:
+            return
+        # push backbuffer to actual pixels in one go
+        for i in range(12):
+            self.mac.pixels[i] = self._led[i]
+        try:
+            self.mac.pixels.show()
+        except AttributeError:
+            pass
+        self._led_dirty = False
+        self._last_led_push = now

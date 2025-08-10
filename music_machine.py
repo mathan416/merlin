@@ -27,11 +27,15 @@ class music_machine():
         self.sequence=[]
         self.gameMode = "recording"
         self.tempo = 150 # bpm #make this adjustable via encoder??
-        print ("Music Machine is initialized")
         #self.new_game()
 
     def new_game(self):
         print ("new Music Machine game")
+        try:
+            self.macropad.pixels.auto_write = True
+        except AttributeError:
+            pass
+        self.macropad.pixels.brightness = 0.30
         self.sequence.clear()
         self.macropad.pixels.fill((0,0,0))
         # run dots through every active button
@@ -39,10 +43,6 @@ class music_machine():
             self.macropad.pixels[x]=0x000099
             time.sleep(0.1)
             self.macropad.pixels[x]=self.colors[x]
-        #sing a song
-        self.macropad.play_tone(self.tones[0], 0.5)
-        self.macropad.play_tone(self.tones[2], 0.5)
-        self.macropad.play_tone(self.tones[4], 0.5)
         #clear and light up new/same buttons
         #self.clear_board()
         self.gameMode = "recording"

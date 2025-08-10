@@ -101,6 +101,12 @@ class tictactoe:
     # ---------- Public API ----------
     def new_game(self):
         print ("new Tic Tac Toe")
+        try:
+            self.mac.pixels.auto_write = True
+        except AttributeError:
+            pass
+        self.mac.pixels.brightness = 0.30
+        
         self.board = [0]*9
         self.game_over = False
         self.starter = 1
@@ -356,14 +362,6 @@ class tictactoe:
             time.sleep(0.1)
             self.mac.pixels[x] = wipe_colors[x]
 
-        # Triad like Simon
-        try:
-            self.mac.play_tone(self.tones[0], 0.5)
-            self.mac.play_tone(self.tones[2], 0.5)
-            self.mac.play_tone(self.tones[4], 0.5)
-        except Exception:
-            pass
-
         # Fade the palette down so the game UI takes over cleanly
         for s in (0.4, 0.2, 0.1, 0.0):
             for i in range(12):
@@ -404,38 +402,43 @@ class tictactoe:
                 self.anim_idx += 1
 
     # ---------- Reset helpers (K9 New / K10 Swap) ----------
+    def _maybe_cpu_auto_start(self):
+        if not self.human_to_move and not self.game_over:
+            self._cpu_move()
+            self._check_state()
+
     def _reset_new(self):
         if self.anim_mode is not None:
             self._stop_anim()
         self.board = [0]*9
         self.game_over = False
-        self.starter = 1
+        self.starter = 1                 # Human starts on New
         self.human_to_move = True
         self._normal_status("Human to move")
         self._show_legends(True)
         self._lights_clear()
-        self._start_game_wipe()
         try:
             self.mac.display.root_group = self.group
         except AttributeError:
             self.mac.display.show(self.group)
+        # No wipe here.
 
     def _reset_swap(self):
         if self.anim_mode is not None:
             self._stop_anim()
         self.board = [0]*9
         self.game_over = False
-        self.starter = 2 if self.starter == 1 else 1
+        self.starter = 2 if self.starter == 1 else 1   # toggle starter
         self.human_to_move = (self.starter == 1)
         self._normal_status("Human to move" if self.human_to_move else "CPU to move")
         self._show_legends(True)
         self._lights_clear()
-        self._start_game_wipe()
         try:
             self.mac.display.root_group = self.group
         except AttributeError:
             self.mac.display.show(self.group)
-        # If CPU starts, press K11 for CPU to move.
+        # If CPU starts, move immediately.
+        self._maybe_cpu_auto_start()
 
     # ---------- Animation reset ----------
     def _stop_anim(self):

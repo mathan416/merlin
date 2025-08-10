@@ -345,15 +345,6 @@ class blackjack13:
             time.sleep(0.06)
             self.mac.pixels[x] = self.WIPE_COLORS[x]
 
-        # triad — match simon.py & tictactoe.py timing
-        try:
-            if len(self.tones) >= 5:
-                self.mac.play_tone(self.tones[0], 0.5)
-                self.mac.play_tone(self.tones[2], 0.5)
-                self.mac.play_tone(self.tones[4], 0.5)
-        except Exception:
-            pass
-
         # fade palette to black
         for s in (0.4, 0.2, 0.1, 0.0):
             for i in range(12):

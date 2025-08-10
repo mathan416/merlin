@@ -1,21 +1,15 @@
-# to learn display
-# 
-# 
-# # Merlin emulator
-# games:
-# tic tac toe
-# Music Machine
-# Echo (Simon)
-# Blackjack 13
-# Magic square
-# Mindbender
+# Merlin emulator launcher (CircuitPython 9.x)
+# Menu -> press encoder to start a game; press again to return to menu.
 
-import os
+import time
 import displayio
 import terminalio
-from adafruit_display_shapes.rect import Rect
 from adafruit_display_text import label
 from adafruit_macropad import MacroPad
+
+print("Loading Merlin")
+
+# ---- Import game classes (no instances yet!) ----
 from mindbender import mindbender
 from magic_square import magic_square
 from echo import echo
@@ -25,106 +19,158 @@ from tictactoe import tictactoe
 from blackjack13 import blackjack13
 from snake import snake
 from hit_or_miss import hit_or_miss
-# from rainbowio import colorwheel
+from three_shells import three_shells
 
+# ---------- Setup hardware ----------
 macropad = MacroPad()
-# little bit of cleanup
-macropad.pixels.fill((0,0,0))
+macropad.pixels.fill((50, 0, 0))  # clear pads
 
-# configuration
+# 12-tone palette
 tones = [196, 220, 247, 262, 294, 330, 349, 392, 440, 494, 523, 587]
 
-# create the objects for each game
-games = dict()
-games['Magic Square']  = magic_square(macropad, tones)
-games['Mindbender']    = mindbender(macropad, tones)
-games['Echo']          = echo(macropad, tones)
-games['Simon']         = simon(macropad, tones)
-games['Music Machine'] = music_machine(macropad, tones)
-games['Tic Tac Toe']   = tictactoe(macropad, tones)
-games['Blackjack 13']  = blackjack13(macropad, tones)
-games['Snake']         = snake(macropad, tones, False)
-games['Snake II']      = snake(macropad, tones, True)
-games['Hit or Miss']   = hit_or_miss(macropad, tones)
+# ---------- Lazy game factories (no drawing until chosen) ----------
+games_factories = {
+    "Magic Square":  lambda: magic_square(macropad, tones),
+    "Mindbender":    lambda: mindbender(macropad, tones),
+    "Echo":          lambda: echo(macropad, tones),
+    "Simon":         lambda: simon(macropad, tones),
+    "Music Machine": lambda: music_machine(macropad, tones),
+    "Tic Tac Toe":   lambda: tictactoe(macropad, tones),
+    "Blackjack 13":  lambda: blackjack13(macropad, tones),
+    "Snake":         lambda: snake(macropad, tones, False),
+    "Snake II":      lambda: snake(macropad, tones, True),
+    "Hit or Miss":   lambda: hit_or_miss(macropad, tones),
+    "Three Shells":  lambda: three_shells(macropad, tones),
+}
+game_names = list(games_factories.keys())
+game_instances = {}  # name -> instance (created on first play)
 
-# display setup 
-bitmap = displayio.OnDiskBitmap("MerlinChrome.bmp")
-tile_grid = displayio.TileGrid(
-    bitmap,
-    pixel_shader=getattr(bitmap, 'pixel_shader', displayio.ColorConverter())
-)
-group = displayio.Group()
-macropad.display.root_group = group
-group.append(tile_grid)
+# ---------- Menu UI ----------
+def build_menu_group():
+    group = displayio.Group()
+    # Optional splash image
+    try:
+        bmp = displayio.OnDiskBitmap("MerlinChrome.bmp")
+        tile = displayio.TileGrid(bmp, pixel_shader=getattr(bmp, "pixel_shader", displayio.ColorConverter()))
+        group.append(tile)
+    except Exception:
+        pass  # fine if missing
 
-group.append(label.Label(
-    terminalio.FONT, text='choose your game:', color=0xffffff,
-    anchored_position=(macropad.display.width//2, 31),
-    anchor_point=(0.5, 0.0)
-))
-group.append(label.Label(
-    terminalio.FONT, text=' '*20, color=0xffffff,
-    anchored_position=(macropad.display.width//2, 45),
-    anchor_point=(0.5, 0.0)
-))
+    title = label.Label(
+        terminalio.FONT, text="choose your game:", color=0xFFFFFF,
+        anchor_point=(0.5, 0.0), anchored_position=(macropad.display.width // 2, 31)
+    )
+    choice = label.Label(
+        terminalio.FONT, text=" " * 20, color=0xFFFFFF,
+        anchor_point=(0.5, 0.0), anchored_position=(macropad.display.width // 2, 45)
+    )
+    group.append(title)   # index 1
+    group.append(choice)  # index 2
+    return group
 
-last_position = None
-last_encoder_switch = None
-modechange = 1
-print("modechange on")
+menu_group = build_menu_group()
+macropad.display.root_group = menu_group
+# show initial selection
+menu_group[2].text = game_names[0]
 
-# MAIN LOOP ----------------------------
+# ---------- Helpers ----------
+def enter_menu():
+    # normalize pixel behavior for menu
+    try:
+        macropad.pixels.auto_write = True
+    except AttributeError:
+        pass
+    macropad.pixels.brightness = 0.30
+    macropad.pixels.fill((50, 0, 0))  # menu hint
+    macropad.display.root_group = menu_group
+
+def start_game_by_name(name):
+    # Let each game manage auto_write itself; just clear first
+    macropad.pixels.fill((0, 0, 0))
+
+    game = game_instances.get(name)
+    if game is None:
+        game = games_factories[name]()  # create on demand
+        game_instances[name] = game
+
+    # Start it
+    game.new_game()
+
+    # Hand display to the game UI if provided
+    if hasattr(game, "group") and game.group is not None:
+        macropad.display.root_group = game.group
+
+    # Clear any lingering menu LEDs
+    macropad.pixels.fill((0, 0, 0))
+    return game
+
+# ---------- Main loop state ----------
+mode_menu = True
+last_encoder_position = macropad.encoder
+last_encoder_switch = False
+current_game = None
+
+# ---------- Main loop ----------
 while True:
-    position = macropad.encoder
-    if position != last_position:
-        if modechange:
-            pass  # cycle through the games (menu mode)
+    # --- encoder turn ---
+    pos = macropad.encoder
+    if pos != last_encoder_position:
+        if mode_menu:
+            idx = pos % len(game_names)
+            menu_group[2].text = game_names[idx]
         else:
-            # In game mode, let the game handle encoder changes if it wants
-            current_game.encoderChange(position, last_position)
-        last_position = position
-
-    # Encoder button toggles between menu <-> game
-    macropad.encoder_switch_debounced.update()
-    encoder_switch = macropad.encoder_switch_debounced.pressed
-    if encoder_switch != last_encoder_switch:
-        last_encoder_switch = encoder_switch
-        if encoder_switch:
-            if modechange:
-                modechange = 0
-                print("modechange off")
-                group[1].text = "Now Playing:"
-                # select and start the chosen game
-                current_game = games[list(games.keys())[macropad.encoder % len(games)]]
-                current_game.new_game()
-            else:
-                modechange = 1
-                group[1].text = "Choose your game:"
-                macropad.pixels.fill((50, 0, 0))
-                # CP 9+: root_group; CP 8.x fallback
+            if current_game and hasattr(current_game, "encoderChange"):
                 try:
-                    macropad.display.root_group = group
-                except AttributeError:
-                    macropad.display.show(group)
+                    current_game.encoderChange(pos, last_encoder_position)
+                except Exception as e:
+                    print("encoderChange error:", e)
+        last_encoder_position = pos
 
-    elif modechange:
-        # Menu mode: update highlighted game name as the knob turns
-        current_knob = macropad.encoder % len(games)
-        group[2].text = list(games.keys())[current_knob]
+    # --- encoder press (toggle menu/game) ---
+    macropad.encoder_switch_debounced.update()
+    enc_pressed = macropad.encoder_switch_debounced.pressed
+    if enc_pressed != last_encoder_switch:
+        last_encoder_switch = enc_pressed
+        if enc_pressed:
+            if mode_menu:
+                # Enter game
+                mode_menu = False
+                menu_group[1].text = "Now Playing:"
+                sel = game_names[macropad.encoder % len(game_names)]
+                current_game = start_game_by_name(sel)
+            else:
+                # Return to menu
+                # Give the active game a chance to clean up LEDs/auto_write
+                try:
+                    if current_game and hasattr(current_game, "cleanup"):
+                        current_game.cleanup()
+                except Exception as e:
+                    print("cleanup error:", e)
+                mode_menu = True
+                menu_group[1].text = "choose your game:"
+                enter_menu()
 
-    else:
-        # -------- Game mode: run the game's frame update --------
-        if hasattr(current_game, "tick"):
+    if mode_menu:
+        time.sleep(0.01)
+        continue
+
+    # --- game tick/update ---
+    if current_game and hasattr(current_game, "tick"):
+        try:
             current_game.tick()
+        except Exception as e:
+            print("tick error:", e)
 
-        # Then handle button presses/releases for the current game
-        key_event = macropad.keys.events.get()
-        if key_event:
-            key_number = key_event.key_number
-            if key_number < 12:
-                if key_event.pressed:
-                    current_game.button(key_number)
+    # --- key events to active game ---
+    evt = macropad.keys.events.get()
+    if evt:
+        key = evt.key_number
+        if key < 12 and current_game:
+            try:
+                if evt.pressed:
+                    current_game.button(key)
                 else:
-                    # Forward releases if the game supports it (e.g., Hit or Miss reveal)
                     if hasattr(current_game, "button_up"):
-                        current_game.button_up(key_number)
+                        current_game.button_up(key)
+            except Exception as e:
+                print("button error:", e)
