@@ -18,13 +18,9 @@ class match_it:
         self.K_NEW   = 9   # restart to preview (no wipe)
         self.K_START = 11  # start from preview (with wipe)
 
-        # mismatch hide timer (non-blocking)
-        self.hide_pair = None
-        self.hide_at = 0.0
-
         # animation timing (tweak to taste)
         self.ANIM_FRAME_DT     = 0.03   # ~25 FPS for grid anims (higher = slower)
-        self.CROSSFADE_STEPS   = 12     # how many steps to blend between frames
+        self.CROSSFADE_STEPS   = 14     # how many steps to blend between frames
         self.KEY_POP_DURATION  = 0.28   # seconds for single-key pop animation
 
         # preview encoder selection
@@ -72,10 +68,6 @@ class match_it:
         self._preview_setup()
 
     # ---------- symbol helpers ----------
-    def _symbol_name(self, symbol_id):
-        entry = self.symbols.get(symbol_id)
-        return entry["name"] if entry else "propeller"
-
     def _symbol_anim_name(self, symbol_id):
         entry = self.symbols.get(symbol_id)
         return entry["anim"] if entry else "propeller"
@@ -115,9 +107,6 @@ class match_it:
                 self._preview_setup()
             return
 
-        if self.mode == "lock":
-            return
-
         if self.mode == "play":
             if key == self.K_NEW:
                 self._preview_setup()
@@ -141,18 +130,6 @@ class match_it:
         self._render_preview_cursor()
 
     def tick(self):
-        now = time.monotonic()
-
-        # hide a mismatched pair after delay
-        if self.mode == "lock" and now >= self.hide_at:
-            k1, k2 = self.hide_pair
-            self.revealed[k1] = False
-            self.revealed[k2] = False
-            self.hide_pair = None
-            self.mode = "play"
-            self._render_board()
-
-        # keep preview highlight visible
         if self.mode == "preview":
             self._render_preview_cursor(refresh_only=True)
 
@@ -164,8 +141,6 @@ class match_it:
         self.solved   = [False] * 9
         self.first_pick = None
         self.tries = 0
-        self.hide_pair = None
-        self.hide_at = 0.0
         self.sel = 0
 
         # ensure labels exist, then restore full title lines
@@ -227,7 +202,7 @@ class match_it:
         self._pop_key_blocking(k, sym_k)
 
         # 3×3 animation (use "rainbow" for WILD)
-        anim_name = "rainbow" if sym_k == self.WILD else self._symbol_name(sym_k)
+        anim_name = "rainbow" if sym_k == self.WILD else self._symbol_anim_name(sym_k)
         self._play_symbol_anim(anim_name, self._color_for_symbol(sym_k), dt=0.055)
 
         # IMPORTANT: restore per-tile visuals after the 3×3 grid animation
@@ -322,8 +297,6 @@ class match_it:
     def _preview_setup(self):
         self.mode = "preview"
         self.sel = 0
-        self.hide_pair = None
-        self.hide_at = 0.0
         self.first_pick = None
 
         self.mac.pixels.brightness = self.BRIGHT
@@ -353,7 +326,7 @@ class match_it:
 
     # ---------- Board visuals (play mode) ----------
     def _render_board(self):
-        if self.mode not in ("play", "lock"):
+        if self.mode != "play":
             return
         for i in range(9):
             self._render_board_key(i)
@@ -463,7 +436,7 @@ class match_it:
 
         # Smooth cosine crossfade between frames, repeated a couple times
         loops = 2
-        steps = 14  # crossfade smoothness (higher = smoother/slower)
+        steps = self.CROSSFADE_STEPS  # crossfade smoothness (higher = smoother/slower)
         frame_dt = dt if dt is not None else 0.06
 
         for _ in range(loops):
@@ -531,9 +504,6 @@ class match_it:
                 self.mac.pixels[i] = (r << 16) | (g << 8) | b
             self._led_show(); time.sleep(0.02)
 
-        # <-- land on the title screen after the wipe
-        #self._show_title_screen()
-
     def _sound_match(self):
         for f in (660, 880):
             try: self.mac.play_tone(f, 0.04)
@@ -563,7 +533,7 @@ class match_it:
 
 
     def _show_title_screen(self):
-        W, H = self.mac.display.width, self.mac.display.height
+        W = self.mac.display.width
 
         g = displayio.Group()
 
@@ -656,7 +626,6 @@ class match_it:
             self._show()
             
     def _set_title_texts(self, now_playing=None, game_title=None, status=None):
-        """Update title-screen labels without touching the logo TileGrid."""
         if now_playing is not None and self.now_playing:
             self.now_playing.text = now_playing
         if game_title is not None and self.game_title:
@@ -666,7 +635,6 @@ class match_it:
         self._show()
 
     def _restore_title_texts(self):
-        """Put the title texts back to defaults."""
         self._set_title_texts(
             now_playing=self.DEFAULT_NOW_PLAYING,
             game_title=self.DEFAULT_GAME_TITLE,

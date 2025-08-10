@@ -7,8 +7,6 @@ import terminalio
 from adafruit_display_text import label
 from adafruit_macropad import MacroPad
 
-
-
 # ---- Import game classes (no instances yet!) ----
 from mindbender import mindbender
 from magic_square import magic_square
@@ -30,22 +28,22 @@ macropad.pixels.fill((50, 0, 0))  # clear pads
 tones = [196, 220, 247, 262, 294, 330, 349, 392, 440, 494, 523, 587]
 
 # ---------- Lazy game factories (no drawing until chosen) ----------
-games_factories = {
-    "Magic Square":  lambda: magic_square(macropad, tones),
-    "Mindbender":    lambda: mindbender(macropad, tones),
-    "Echo":          lambda: echo(macropad, tones),
-    "Simon":         lambda: simon(macropad, tones),
-    "Music Machine": lambda: music_machine(macropad, tones),
-    "Tic Tac Toe":   lambda: tictactoe(macropad, tones),
-    "Blackjack 13":  lambda: blackjack13(macropad, tones),
-    "Snake":         lambda: snake(macropad, tones, False),
-    "Snake II":      lambda: snake(macropad, tones, True),
-    "Hit or Miss":   lambda: hit_or_miss(macropad, tones),
-    "Three Shells":  lambda: three_shells(macropad, tones),
-    "Match it":  lambda: match_it(macropad, tones)
-}
-
-game_names = list(games_factories.keys())
+GAMES_LIST = [
+    ("Blackjack 13",  lambda: blackjack13(macropad, tones)),
+    ("Echo",          lambda: echo(macropad,  tones)),
+    ("Hit or Miss",   lambda: hit_or_miss(macropad, tones)),
+    ("Magic Square",  lambda: magic_square(macropad, tones)),
+    ("Match it",      lambda: match_it(macropad, tones)),
+    ("Mindbender",    lambda: mindbender(macropad, tones)),
+    ("Music Machine", lambda: music_machine(macropad, tones)),
+    ("Simon",         lambda: simon(macropad, tones)),
+    ("Snake",         lambda: snake(macropad, tones, False)),
+    ("Snake II",      lambda: snake(macropad, tones, True)),
+    ("Three Shells",  lambda: three_shells(macropad, tones)),
+    ("Tic Tac Toe",   lambda: tictactoe(macropad, tones)),
+]
+games_factories = {name: factory for name, factory in GAMES_LIST}
+game_names = [name for name, _ in GAMES_LIST]
 game_instances = {}  # name -> instance (created on first play)
 
 # ---------- Menu UI ----------
