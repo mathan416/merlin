@@ -1,14 +1,6 @@
 # merlin
 Recreation of the **Merlin** electronic handheld game using the Adafruit **MacroPad**, now with additional games and *Master Merlin*-inspired modes.
 
-You will need:
-- [Adafruit MacroPad Libraries](https://learn.adafruit.com/adafruit-macropad-rp2040/macropad-circuitpython-library)  
-- CircuitPython **9.1** or higher (developed using **9.1.4**)
-
-Merlin Guides:
-- [Master Merlin Manual (Parker Bros.)](http://pdf.textfiles.com/manuals/HANDHELDS/ParkerBros-MasterMerlin.pdf)  
-- [Original Merlin Manual](https://www.monroeworld.com/vmerlin/bin/merlinmanual.pdf)
-
 ---
 
 ## 📜 Project Overview
@@ -16,9 +8,94 @@ Merlin Guides:
 This project recreates and expands upon the classic *Merlin* electronic handheld game using an **Adafruit MacroPad** running CircuitPython.  
 It includes a launcher system to select and start different game modes, each implemented as a separate Python class with LED, sound, and OLED display feedback.
 
+You will need:
+- [Adafruit MacroPad Libraries](https://learn.adafruit.com/adafruit-macropad-rp2040/macropad-circuitpython-library)  
+- CircuitPython **9.1** or higher (developed using **9.1.4**)
+
+Merlin Guides:
+- [Merlin Manual (Parker Bros.)](https://www.monroeworld.com/vmerlin/bin/merlinmanual.pdf)
+- [Master Merlin Manual (Parker Bros.)](http://pdf.textfiles.com/manuals/HANDHELDS/ParkerBros-MasterMerlin.pdf)  
+
 ---
 
-## 🎮 Games
+## 🚀 Quick Start / 📥 Installation & Setup
+
+1. **Install CircuitPython 9.1 or higher**  
+   Follow Adafruit’s guide for your MacroPad:  
+   <https://learn.adafruit.com/adafruit-macropad-rp2040/circuitpython>
+
+2. **Install Required Libraries**  
+   Download the latest library bundle from Adafruit and copy the following to your `lib` folder on the MacroPad:  
+   - `adafruit_display_text`  
+   - `adafruit_macropad`  
+   - `adafruit_ticks`
+   - Any other dependencies from the MacroPad guide.
+
+3. **Copy Game Files**  
+   - Copy all `.py` files and `MerlinChrome.bmp` to the root of your MacroPad’s CIRCUITPY drive.
+
+4. **Eject and reboot** the MacroPad.
+
+5. **Play!**  
+   - Rotate the encoder to select a game.  
+   - Press the encoder to start.  
+   - Press it again (or Key 9 in some games) to return to the menu.  
+
+---
+
+## 🎯 Games Overview
+
+| Game Name       | Type / Inspiration          | Difficulty* | Summary |
+|-----------------|-----------------------------|-------------|---------|
+| **Blackjack 13** | Card game                   | ★☆☆         | Get as close to 13 without going over; CPU opponent |
+| **Echo**         | Memory / Simon-like         | ★★☆         | Repeat an increasing sequence of tones and lights |
+| **Hit or Miss**  | Reaction / Timing           | ★★☆         | Press keys quickly when LEDs light up — don’t miss |
+| **Hi Lo**        | Guessing                    | ★☆☆         | Guess the number; LEDs guide you higher or lower |
+| **Magic Square** | Puzzle                      | ★★☆         | Arrange lights into a magic square pattern |
+| **Match It**     | Memory                      | ★★☆         | Flip keys to find matching pairs |
+| **Mindbender**   | Logic puzzle (Master Merlin)| ★★★         | Guess the hidden code with feedback each attempt |
+| **Music Machine**| Free play                   | ☆☆☆         | Play tones by pressing keys — like a mini piano |
+| **Pair Off**     | Memory (Master Merlin)      | ★★☆         | Match pairs hidden on the board |
+| **Simon**        | Memory / Sequence           | ★★☆         | Repeat LED/sound sequences — classic Simon game |
+| **Snake**        | Arcade / Nokia-style        | ★★☆         | Eat food, grow the snake, avoid walls and self |
+| **Snake II**     | Arcade / Nokia-style        | ★★★         | Snake with wrap-around and bonus items |
+| **Three Shells** | Memory (Master Merlin)      | ★★☆         | Track the ball under shuffled shells |
+| **Tic Tac Toe**  | Board game                  | ★☆☆         | Play against CPU; animated endgame pulses |
+
+\*Difficulty ratings are approximate and assume normal skill settings.
+
+--- 
+
+## 🎛 Controls
+
+### General (Launcher)
+- **Rotate Encoder** → Select game from menu
+- **Press Encoder** → Start selected game
+- **Key 9** → Return to launcher from a game (when supported)
+- **Keys** → Game-specific controls
+
+### Game Controls Overview
+### Per-Game Controls Overview
+
+| Game               | Keys Used                                  | Encoder Use | Notes |
+|--------------------|--------------------------------------------|-------------|-------|
+| **Blackjack 13**   | **K0–K9** for hit/stand inputs, special key for stand | None        | Try to reach exactly 13 without going over; simplified blackjack variant. |
+| **Echo**           | **K0–K9** to repeat sequence                | None        | Merlin’s “Echo” memory game; repeat the tone/light sequence. |
+| **Hi Lo**          | **K0–K9** for number entry                  | None        | Guess the hidden number; skill determines range. |
+| **Hit or Miss**    | **K0–K9** for guessing                     | None        | Try to guess the hidden pattern; feedback after each guess. |
+| **Magic Square**   | **K0–K8** to place numbers                  | None        | Arrange numbers so each row, column, and diagonal add to the same total. |
+| **Match It**       | **K0–K8** for card selection                | None        | Flip two cards to match pictures/numbers; memory challenge. |
+| **Mindbender**     | **K0–K9** for code guesses                  | None        | Mastermind-style pattern logic game. |
+| **Music Machine**  | **K0–K9** play notes                        | Encoder scrolls pitch | Play tones freely; use encoder to change pitch range. |
+| **Pair Off**       | **K0–K8** for card selection                | None        | Flip cards to find matching pairs. |
+| **Simon**          | **K0–K9** to repeat sequence                | None        | Classic Simon memory game; sequence grows each round. |
+| **Snake / Snake II** | **K0–K2** = up, **K3–K5** = left, **K6–K8** = right, **K9–K11** = down | None | Classic snake; avoid walls and yourself; Snake II adds extra rules. |
+| **Three Shells**   | **K3, K4, K5** = shells                     | None        | **K0–K8** sets skill level before play; follow the ball under the shells. |
+| **Tic Tac Toe**    | **K0–K8** board squares                     | None        | **K9** New game, **K10** Swap starter, **K11** CPU Move. |
+
+---
+
+## 🎮 Launcher Details
 
 ### `code.py` — Game Launcher  
 The main entry point (also called `launcher.py`).  
@@ -30,6 +107,8 @@ Handles:
 - Launching and returning from games without rebooting
 
 ---
+
+## 🎮 Games Details
 
 ### `hi_lo.py` — High or Low  
 A classic number guessing game. The MacroPad picks a random number; you guess higher or lower using the keys. LED colors and sounds indicate whether your guess is too high, too low, or correct. Difficulty can be adjusted by skill level.
@@ -61,46 +140,29 @@ CPU can win, block, and follow basic strategies. Includes animated endgame pulse
 
 ---
 
-## 📥 Installation & Setup
+## 🛠 Developer Notes
 
-1. **Install CircuitPython 9.1 or higher**  
-   Follow Adafruit’s guide for your MacroPad:  
-   <https://learn.adafruit.com/adafruit-macropad-rp2040/circuitpython>
+- All games are **self-contained classes** with `new_game()`, `button()`, and optional `tick()` methods.
+- The launcher dynamically loads games and maintains a single MacroPad instance.
+- LED animations use **non-blocking timing** (`time.monotonic()`), so game logic stays responsive.
+- Sound playback is done with `macropad.play_tone()`, with fallbacks for missing tone lists.
+- Games should avoid blocking loops — animations should progress incrementally in `tick()`.
 
-2. **Install the required MacroPad libraries**  
-   Download the latest library bundle from Adafruit and copy the following to your `lib` folder on the MacroPad:  
-   - `adafruit_display_text`  
-   - `adafruit_macropad`  
-   - `adafruit_ticks` (if needed for non-blocking timers)  
-   - Any other dependencies from the MacroPad guide.
+## 📂 File Structure
 
-3. **Copy this project to your MacroPad**  
-   - Place all `.py` game files and `code.py` in the root of the MacroPad’s CIRCUITPY drive.  
-   - Include `MerlinChrome.bmp` in the root for the launcher and games that display it.  
-   - Ensure the folder structure matches what’s in this repo.
-
-4. **Eject and reboot** the MacroPad.
-
----
-
-## 🎛 Controls
-
-### General (Launcher)
-- **Rotate Encoder** → Select game from menu
-- **Press Encoder** → Start selected game
-- **Key 9** → Return to launcher from a game (when supported)
-- **Keys** → Game-specific controls
-
-### Game Controls Overview
-| Game           | Keys Used | Encoder Use | Notes |
-|----------------|-----------|-------------|-------|
-| Hi Lo          | K0–K9 for number entry | None | Skill determines range |
-| Mindbender     | K0–K9 for code guesses | None | Pattern logic game |
-| Pair Off       | K0–K8 for card selection | None | Match hidden pairs |
-| Snake / Snake II | K0–K2, K3–K5, K6–K8, K9–K11 for direction | None | Avoid collisions |
-| Three Shells   | K3, K4, K5 for shells | None | K0–K8 to set skill |
-| Tic Tac Toe    | K0–K8 board squares | None | K9 New, K10 Swap, K11 CPU Move |
-
----
-
-
+- code.py             # Game launcher (menu system)
+- blackjack13.py
+- echo.py
+- hit_or_miss.py
+- hi_lo.py
+- magic_square.py
+- match_it.py
+- mindbender.py
+- music_machine.py
+- pair_off.py
+- simon.py
+- snake.py
+- three_shells.py
+- tictactoe.py
+- MerlinChrome.bmp     # Merlin-style chrome frame for menu
+- lib/                 # Required Adafruit CircuitPython libraries
