@@ -180,5 +180,5 @@ CPU can win, block, and follow basic strategies. Includes animated endgame pulse
 ## Won't Dos
 
 - 2 Player support for 
--- Match It
--- Pair Off
+   - Match It
+   - Pair Off
