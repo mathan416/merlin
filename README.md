@@ -45,22 +45,22 @@ Merlin Guides:
 
 ## 🎯 Games Overview
 
-| Game Name       | Type / Inspiration          | Difficulty* | Summary |
-|-----------------|-----------------------------|-------------|---------|
-| **Blackjack 13** | Card game                   | ★☆☆         | Get as close to 13 without going over; CPU opponent |
-| **Echo**         | Memory / Simon-like         | ★★☆         | Repeat an increasing sequence of tones and lights |
-| **Hit or Miss**  | Reaction / Timing           | ★★☆         | Press keys quickly when LEDs light up — don’t miss |
-| **Hi Lo**        | Guessing                    | ★☆☆         | Guess the number; LEDs guide you higher or lower |
-| **Magic Square** | Puzzle                      | ★★☆         | Arrange lights into a magic square pattern |
-| **Match It**     | Memory                      | ★★☆         | Flip keys to find matching pairs |
-| **Mindbender**   | Logic puzzle (Master Merlin)| ★★★         | Guess the hidden code with feedback each attempt |
-| **Music Machine**| Free play                   | ☆☆☆         | Play tones by pressing keys — like a mini piano |
-| **Pair Off**     | Memory (Master Merlin)      | ★★☆         | Match pairs hidden on the board |
-| **Simon**        | Memory / Sequence           | ★★☆         | Repeat LED/sound sequences — classic Simon game |
-| **Snake**        | Arcade / Nokia-style        | ★★☆         | Eat food, grow the snake, avoid walls and self |
-| **Snake II**     | Arcade / Nokia-style        | ★★★         | Snake with wrap-around and bonus items |
-| **Three Shells** | Memory (Master Merlin)      | ★★☆         | Track the ball under shuffled shells |
-| **Tic Tac Toe**  | Board game                  | ★☆☆         | Play against CPU; animated endgame pulses |
+| Game Name       | Type / Inspiration          | Difficulty | Summary |
+|-----------------|-----------------------------|------------|---------|
+| **Blackjack 13** | Card game                   | ★☆☆        | Get as close to 13 without going over; CPU opponent |
+| **Echo**         | Memory / Simon-like         | ★★☆        | Repeat an increasing sequence of tones and lights |
+| **Hi Lo**        | Guessing                    | ★☆☆        | Guess the number; LEDs guide you higher or lower |
+| **Hit or Miss**  | Reaction / Timing           | ★★☆        | Press keys quickly when LEDs light up — don’t miss |
+| **Magic Square** | Puzzle                      | ★★☆        | Arrange lights into a magic square pattern |
+| **Match It**     | Memory                      | ★★☆        | Flip keys to find matching pairs |
+| **Mindbender**   | Logic puzzle (Master Merlin)| ★★★        | Guess the hidden code with feedback each attempt |
+| **Music Machine**| Free play                   | ☆☆☆        | Play tones by pressing keys — like a mini piano |
+| **Pair Off**     | Memory (Master Merlin)      | ★★☆        | Match pairs hidden on the board |
+| **Simon**        | Memory / Sequence           | ★★☆        | Repeat LED/sound sequences — classic Simon game |
+| **Snake**        | Arcade / Nokia-style        | ★★☆        | Eat food, grow the snake, avoid walls and self |
+| **Snake II**     | Arcade / Nokia-style        | ★★★        | Snake with wrap-around and bonus items |
+| **Three Shells** | Memory (Master Merlin)      | ★★☆        | Track the ball under shuffled shells |
+| **Tic Tac Toe**  | Board game                  | ★☆☆        | Play against CPU; animated endgame pulses |
 
 \*Difficulty ratings are approximate and assume normal skill settings.
 
@@ -74,24 +74,24 @@ Merlin Guides:
 - **Key 9** → Return to launcher from a game (when supported)
 - **Keys** → Game-specific controls
 
-### Game Controls Overview
 ### Per-Game Controls Overview
 
 | Game               | Keys Used                                  | Encoder Use | Notes |
 |--------------------|--------------------------------------------|-------------|-------|
-| **Blackjack 13**   | **K0–K9** for hit/stand inputs, special key for stand | None        | Try to reach exactly 13 without going over; simplified blackjack variant. |
-| **Echo**           | **K0–K9** to repeat sequence                | None        | Merlin’s “Echo” memory game; repeat the tone/light sequence. |
-| **Hi Lo**          | **K0–K9** for number entry                  | None        | Guess the hidden number; skill determines range. |
-| **Hit or Miss**    | **K0–K9** for guessing                     | None        | Try to guess the hidden pattern; feedback after each guess. |
-| **Magic Square**   | **K0–K8** to place numbers                  | None        | Arrange numbers so each row, column, and diagonal add to the same total. |
-| **Match It**       | **K0–K8** for card selection                | None        | Flip two cards to match pictures/numbers; memory challenge. |
-| **Mindbender**     | **K0–K9** for code guesses                  | None        | Mastermind-style pattern logic game. |
-| **Music Machine**  | **K0–K9** play notes                        | Encoder scrolls pitch | Play tones freely; use encoder to change pitch range. |
-| **Pair Off**       | **K0–K8** for card selection                | None        | Flip cards to find matching pairs. |
-| **Simon**          | **K0–K9** to repeat sequence                | None        | Classic Simon memory game; sequence grows each round. |
-| **Snake / Snake II** | **K0–K2** = up, **K3–K5** = left, **K6–K8** = right, **K9–K11** = down | None | Classic snake; avoid walls and yourself; Snake II adds extra rules. |
-| **Three Shells**   | **K3, K4, K5** = shells                     | None        | **K0–K8** sets skill level before play; follow the ball under the shells. |
-| **Tic Tac Toe**    | **K0–K8** board squares                     | None        | **K9** New game, **K10** Swap starter, **K11** CPU Move. |
+| **Blackjack 13**   | K9-K11 for hit/stand inputs, special key for stand | None        | Try to reach exactly 13 without going over; simplified blackjack variant. |
+| **Echo**           | K0–K8 to repeat sequence                    | None        | Merlin’s “Echo” memory game; repeat the tone/light sequence. |
+| **Hi Lo**          | K0–K8, K10 for number entry                      | None        | Guess the hidden number; skill determines range. |
+| **Hit or Miss**    | K0–K9 for guessing                         | None        | Try to guess the hidden pattern; feedback after each guess. |
+| **Magic Square**   | K0–K8 to place numbers                      | None        | Arrange numbers so each row, column, and diagonal add to the same total. |
+| **Match It**       | K0–K8 for card selection                    | None        | Flip two cards to match pictures/numbers; memory challenge. |
+| **Mindbender**     | K0–K8 for code guesses                      | None        | Mastermind-style pattern logic game. |
+| **Music Machine**  | K0–K9 play notes                            | Encoder scrolls pitch | Play tones freely; use encoder to change pitch range. |
+| **Pair Off**       | K0–K8 for card selection                    | None        | Flip cards to find matching pairs. |
+| **Simon**          | K0–K9 to repeat sequence                    | None        | Classic Simon memory game; sequence grows each round. |
+| **Snake / Snake II** | K4 = up, K6 = left, K8 = right, K10 = down | None | Classic snake; avoid walls and yourself; Snake II adds extra rules. |
+| **Three Shells**   | K3, K4, K5 = shells                         | None        | K0–K8 sets skill level before play; follow the ball under the shells. |
+| **Tic Tac Toe**    | K0–K8 board squares                         | None        | K9 New game, K10 Swap starter, K11 CPU Move. |
+
 
 ---
 
