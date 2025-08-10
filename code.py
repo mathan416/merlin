@@ -1,13 +1,13 @@
 # Merlin emulator launcher (CircuitPython 9.x)
 # Menu -> press encoder to start a game; press again to return to menu.
-
+print("Loading Merlin")
 import time
 import displayio
 import terminalio
 from adafruit_display_text import label
 from adafruit_macropad import MacroPad
 
-print("Loading Merlin")
+
 
 # ---- Import game classes (no instances yet!) ----
 from mindbender import mindbender

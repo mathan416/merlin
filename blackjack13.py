@@ -306,35 +306,98 @@ class blackjack13:
     # --------- Deal animation (non-blocking) ----------
     def _start_deal_anim(self, who, value):
         self.deal_anim_active = True
-        self.deal_for = who              # "player" or "dealer"
-        self.deal_value = max(1, min(9, value))  # cap at 9 LEDs visible
-        self.deal_idx = 0
+        self.deal_for = who
+        self.deal_value = max(1, min(9, value))
+
+        # One smooth pass of a raised-cosine crest across only 0..N-1
+        self.deal_anim_phase = "wave"
         self.deal_last = time.monotonic()
+
+        # Wave parameters (tweak to taste)
+        self.wave_center = -1.0           # start just before index 0
+        self.WAVE_SPEED  = 0.55           # indices per frame
+        self.WAVE_WIDTH  = 1.2            # half-width (in LEDs)
+        self.DEAL_FRAME_DT = 0.03         # ~33 FPS for smoothness
+
+        # Prep the board row once (others stay off)
+        for i in range(9):
+            self.mac.pixels[i] = 0x000000
 
     def _run_deal_anim(self, now):
         if now - self.deal_last < self.DEAL_FRAME_DT:
             return
         self.deal_last = now
 
-        # clear board area
+        n = self.deal_value
+        color = self.COLOR_HUMAN if self.deal_for == "player" else self.COLOR_CPU
+
+        if self.deal_anim_phase == "wave":
+            # Draw a single raised-cosine crest across indices 0..n-1
+            c = self.wave_center
+            w = self.WAVE_WIDTH
+            for i in range(n):
+                # raised cosine window around the moving center
+                d = abs(i - c)
+                if d <= w:
+                    u = 0.5 + 0.5 * math.cos(math.pi * d / w)  # 1 at center -> 0 at edges
+                else:
+                    u = 0.0
+                s = 0.20 + 0.80 * u  # min 20% so it never fully blinks out
+                self.mac.pixels[i] = self._scale(color, s)
+
+            # LEDs beyond N stay off
+            for i in range(n, 9):
+                self.mac.pixels[i] = 0x000000
+
+            self.wave_center += self.WAVE_SPEED
+
+            # When crest exits past the last LED, hold solid briefly then end
+            if self.wave_center > (n - 1) + w:
+                for i in range(n):
+                    self.mac.pixels[i] = color
+                self.deal_anim_phase = "hold"
+                self.hold_until = now + 0.15  # brief readability hold
+            return
+
+        # Hold solid, then clear and finish
+        if self.deal_anim_phase == "hold":
+            if now >= self.hold_until:
+                for i in range(9):
+                    self.mac.pixels[i] = 0x000000
+                self.deal_anim_active = False
+                self.deal_anim_phase = None
+
+        # ---- Reveal phase: fill 0..n-1 up to deal_idx, then stop ----
         for i in range(9):
             self.mac.pixels[i] = 0x000000
 
-        color = self.COLOR_HUMAN if self.deal_for == "player" else self.COLOR_CPU
+        upto = min(self.deal_idx, n - 1)
+        for i in range(upto + 1):
+            self.mac.pixels[i] = color
 
-        # light up from 0..deal_idx
+        self.deal_idx += 1
+        if self.deal_idx > n + 1:
+            # brief hold done — clear and end
+            for i in range(9):
+                self.mac.pixels[i] = 0x000000
+            self.deal_anim_active = False
+            self.deal_anim_phase = "wave"  # reset for next time
+
+        # ----- Reveal phase -----
+        # Progressively light 0..deal_value-1 in solid color, then stop
+        for i in range(9):
+            self.mac.pixels[i] = 0x000000
         upto = min(self.deal_idx, self.deal_value - 1)
         for i in range(upto + 1):
             self.mac.pixels[i] = color
 
         self.deal_idx += 1
         if self.deal_idx > self.deal_value + 1:
-            # one extra frame to "hold" then stop
-            self.deal_anim_active = False
-            # leave the board cleared after the anim
+            # brief hold is done — clear and end anim
             for i in range(9):
                 self.mac.pixels[i] = 0x000000
-            # tick() will handle any pending dealer resolve immediately
+            self.deal_anim_active = False
+            self.deal_anim_phase = "chase"  # reset for next time
 
     # --------- Start Game Wipe (Simon-style) ----------
     def _start_game_wipe(self):
