@@ -70,7 +70,7 @@ class three_shells:
 
     # ---------- Public API ----------
     def new_game(self):
-        self._enter_skill_select()
+        self._enter_skill_select(wipe=True)
         self._show()
 
     def button(self, key):
@@ -86,7 +86,7 @@ class three_shells:
             return
 
         if key == self.K_NEW:
-            self._enter_skill_select()
+            self._enter_skill_select(wipe=False)
             return
 
         if self.mode != "guess":
@@ -145,13 +145,14 @@ class three_shells:
             return
 
     # ---------- Skill select ----------
-    def _enter_skill_select(self):
+    def _enter_skill_select(self, wipe=True):
         self.mode = "skill"
         self.score = 0
         self.rounds = 0
-        self._show_drawn = False          # <-- reset here
+        self._show_drawn = False
         self._all_off()
-        self._start_game_wipe()
+        if wipe:
+            self._start_game_wipe()     # only if requested
         self.status.text = f"Skill: {self.skill}"
         self._render_skill(time.monotonic())
         self._show()
