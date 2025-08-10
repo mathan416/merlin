@@ -1,6 +1,8 @@
 # merlin
 Recreation of the **Merlin** electronic handheld game using the Adafruit **MacroPad**, now with additional games and *Master Merlin*-inspired modes.
 
+Firstly - thank you to Keith Tanner for the original starting point code plus the STL files to print a case for the Macropad.
+
 ---
 
 ## 📜 Project Overview
@@ -11,6 +13,9 @@ It includes a launcher system to select and start different game modes, each imp
 You will need:
 - [Adafruit MacroPad Libraries](https://learn.adafruit.com/adafruit-macropad-rp2040/macropad-circuitpython-library)  
 - CircuitPython **9.1** or higher (developed using **9.1.4**)
+
+Case for Macropad Merlin:
+- [Merlin case for Adafruit Macropad](https://www.thingiverse.com/thing:5118991)
 
 Merlin Guides:
 - [Merlin Manual (Parker Bros.)](https://www.monroeworld.com/vmerlin/bin/merlinmanual.pdf)
