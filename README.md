@@ -47,20 +47,20 @@ Merlin Guides:
 
 | Game Name       | Type / Inspiration          | Difficulty | Summary |
 |-----------------|-----------------------------|------------|---------|
-| **Blackjack 13** | Card game                   | ★☆☆        | Get as close to 13 without going over; CPU opponent |
-| **Echo**         | Memory / Simon-like         | ★★☆        | Repeat an increasing sequence of tones and lights |
-| **Hi Lo**        | Guessing                    | ★☆☆        | Guess the number; LEDs guide you higher or lower |
-| **Hit or Miss**  | Reaction / Timing           | ★★☆        | Press keys quickly when LEDs light up — don’t miss |
-| **Magic Square** | Puzzle                      | ★★☆        | Arrange lights into a magic square pattern |
-| **Match It**     | Memory                      | ★★☆        | Flip keys to find matching pairs |
-| **Mindbender**   | Logic puzzle (Master Merlin)| ★★★        | Guess the hidden code with feedback each attempt |
-| **Music Machine**| Free play                   | ☆☆☆        | Play tones by pressing keys — like a mini piano |
+| **Blackjack 13** | Card game (Merlin)          | ★☆☆        | Get as close to 13 without going over; CPU opponent |
+| **Echo**         | Memory / Sequence (Simon & Merlin)| ★★☆        | Repeat an increasing sequence of tones and lights |
+| **Hi Lo**        | Guessing (Master Merlin)    | ★☆☆        | Guess the number; LEDs guide you higher or lower |
+| **Hit or Miss**  | Reaction / Timing (Master Merlin)          | ★★☆        | Press keys quickly when LEDs light up — don’t miss |
+| **Magic Square** | Puzzle (Merlin)             | ★★☆        | Arrange lights into a magic square pattern |
+| **Match It**     | Memory (Master Merlin)      | ★★☆        | Flip keys to find matching pairs |
+| **Mindbender**   | Logic puzzle (Merlin)       | ★★★        | Guess the hidden code with feedback each attempt |
+| **Music Machine**| Free play (Merlin)          | ☆☆☆        | Play tones by pressing keys — like a mini piano |
 | **Pair Off**     | Memory (Master Merlin)      | ★★☆        | Match pairs hidden on the board |
-| **Simon**        | Memory / Sequence           | ★★☆        | Repeat LED/sound sequences — classic Simon game |
+| **Simon**        | Memory / Sequence (Simon & Merlin)   | ★★☆        | Repeat LED/sound sequences — classic Simon game |
 | **Snake**        | Arcade / Nokia-style        | ★★☆        | Eat food, grow the snake, avoid walls and self |
 | **Snake II**     | Arcade / Nokia-style        | ★★★        | Snake with wrap-around and bonus items |
 | **Three Shells** | Memory (Master Merlin)      | ★★☆        | Track the ball under shuffled shells |
-| **Tic Tac Toe**  | Board game                  | ★☆☆        | Play against CPU; animated endgame pulses |
+| **Tic Tac Toe**  | Board game (Merlin)         | ★☆☆        | Play against CPU; animated endgame pulses |
 
 \*Difficulty ratings are approximate and assume normal skill settings.
 
