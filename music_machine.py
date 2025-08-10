@@ -1,100 +1,161 @@
-#music machine
-# 
+# music_machine.py — Simple step recorder for Adafruit MacroPad
+# K0..K8 notes, K9 = Reset (no wipe), K10 = Rest, K11 = Play
+# Starts in recording mode: K9 dim white, K11 red, others black
 
-# button 0 is octave below C
-# buttons 1-8 are C scale
-# button 9 is octave up
-# button 10 is rest
-# button 11 is "play"
-# start over: select with encoder
-
-#this one has custom tones
 import time
 
-# init
 class music_machine():
     def __init__(self, macropad, tones):
-        # shows how the keys affect others
-        #provided tones are ignored as they are boring
-        self.tones = [196, 262, 294, 330, 350, 392, 440, 494, 523, 587,0]
+        # Ignore provided tones; use our own simple scale + rest
+        self.tones = [196, 262, 294, 330, 350, 392, 440, 494, 523, 587, 0]
+        # Fun palette to flash keys during playback (optional)
         self.colors = [
-        0xf400fd,0xd516ed,0xb71edc,
-        0x9a21cb,0x7f21b8,0x651fa5,
-        0x4c1c91,0x34177d,0x1d1268,
-        0x010c54,0x000000,0x009900,
+            0xF400FD, 0xD516ED, 0xB71EDC,
+            0x9A21CB, 0x7F21B8, 0x651FA5,
+            0x4C1C91, 0x34177D, 0x1D1268,
+            0x010C54, 0x000000, 0x009900,
         ]
         self.macropad = macropad
-        self.sequence=[]
+        self.sequence = []
         self.gameMode = "recording"
-        self.tempo = 150 # bpm #make this adjustable via encoder??
-        #self.new_game()
+        self.tempo = 150  # bpm
+        self._ready = False  # block input until new_game() finishes
 
+    # ---------- Public API ----------
     def new_game(self):
-        print ("new Music Machine game")
+        print("new Music Machine game")
+        self._claim_leds()
+        self.sequence.clear()
+        self.gameMode = "recording"
+
+        # (Optional) startup sweep — remove if you want no sweep:
+        for x in range(len(self.colors)):
+            self.macropad.pixels[x] = 0x000099
+            time.sleep(0.1)
+            self.macropad.pixels[x] = self.colors[x]
+
+        self._led_state_recording()   # K9 white, K11 red, others black
+        self._ready = True            # <- enable playback now that UI is ready
+
+    # ---------- Core actions ----------
+    def play(self):
+        # Guard: ignore if not ready
+        if not self._ready:
+            return
+        # No notes? Blink K11 yellow quickly as feedback
+        if not self.sequence:
+            self._blink_key(11, 0x999900, 0.18)
+            self._led_state_recording()
+            return
+
+        # Enter playback
+        self.macropad.pixels.fill((0, 0, 0))
+        self.macropad.pixels[11] = 0x009900  # K11 green while playing
+
+        delay = 60.0 / max(1, self.tempo)
+        for k in self.sequence:
+            # Light the played key briefly
+            if 0 <= k <= 11:
+                self.macropad.pixels[k] = self.colors[k]
+            # Play tone or rest
+            f = self.tones[k] if 0 <= k < len(self.tones) else 0
+            if f > 0:
+                self.macropad.play_tone(f, delay)
+            else:
+                time.sleep(delay)
+            # Back to black
+            if 0 <= k <= 11:
+                self.macropad.pixels[k] = 0x000000
+
+        # Exit playback: back to recording UI
+        self.gameMode = "recording"
+        self._led_state_recording()
+
+    def clear_board(self):
+        # Legacy: show palette (unused by default)
+        for x in range(len(self.colors)):
+            self.macropad.pixels[x] = self.colors[x]
+
+    # ---------- Input ----------
+    def button(self, key):
+        if key == 9:
+            # Green flash to acknowledge reset
+            self.macropad.pixels[9] = 0x009900
+            try: self.macropad.pixels.show()
+            except AttributeError: pass
+            time.sleep(0.08)
+            self.sequence.clear()
+            self.gameMode = "recording"
+            self._led_state_recording()
+            return
+
+        if self.gameMode == "recording":
+            if key < 10:  # notes 0..9
+                self.macropad.pixels[key] = 0x009900
+                self.macropad.play_tone(self.tones[key], 0.2)
+                self.macropad.pixels[key] = 0x000000
+                self.sequence.append(key)
+            elif key == 10:  # REST key: visual ack, no tone
+                self.macropad.pixels[10] = 0x303030
+                try: self.macropad.pixels.show()
+                except AttributeError: pass
+                time.sleep(0.08)
+                self.macropad.pixels[10] = 0x000000
+                self.sequence.append(key)
+
+        if key == 11:
+            self.gameMode = "playing"
+            self.play()
+
+    def encoderChange(self, newPosition, oldPosition):
+        # Adjust tempo in 5 bpm steps
+        self.tempo = max(30, min(300, self.tempo + (newPosition - oldPosition) * 5))
+        print("new tempo", self.tempo, "bpm")
+
+    # ---------- UI helpers ----------
+    def _led_state_recording(self):
+        # Explicit paint + show so the first start always displays immediately
+        self.macropad.pixels.fill((0, 0, 0))  # all black
+        self.macropad.pixels[9]  = 0x202020   # K9 = dim white (New)
+        self.macropad.pixels[11] = 0x990000   # K11 = red (record)
+        try:
+            self.macropad.pixels.show()
+        except AttributeError:
+            pass
+
+    def _ack_reset(self):
+        # Flash K9 green to acknowledge, clear sequence, restore recording UI
+        self.sequence.clear()
+        self.gameMode = "recording"
+        # Show ack without disturbing other keys
+        old9 = self.macropad.pixels[9]
+        self.macropad.pixels[9] = 0x009900
+        # Optional: quick confirmation tone
+        try:
+            self.macropad.play_tone(523, 0.08)
+        except Exception:
+            time.sleep(0.08)
+        self.macropad.pixels[9] = old9  # back to dim white
+        # Ensure K11 is red and others black
+        self._led_state_recording()
+
+    def _blink_key(self, key, color, dur):
+        if not (0 <= key <= 11):
+            return
+        old = self.macropad.pixels[key]
+        self.macropad.pixels[key] = color
+        time.sleep(max(0.02, dur))
+        self.macropad.pixels[key] = old
+        
+    def _claim_leds(self):
+        # Make sure this game controls pixel writes from the very first frame
         try:
             self.macropad.pixels.auto_write = True
         except AttributeError:
             pass
         self.macropad.pixels.brightness = 0.30
-        self.sequence.clear()
-        self.macropad.pixels.fill((0,0,0))
-        # run dots through every active button
-        for x in range (len(self.colors)):
-            self.macropad.pixels[x]=0x000099
-            time.sleep(0.1)
-            self.macropad.pixels[x]=self.colors[x]
-        #clear and light up new/same buttons
-        #self.clear_board()
-        self.gameMode = "recording"
-        
-
-    def play(self):
-        self.macropad.pixels.fill((0,0,0))
-        self.macropad.pixels[11]=0x000099
-        delay = 60/self.tempo
-        for x in self.sequence:
-            self.macropad.pixels[x]=self.colors[x]
-            self.macropad.play_tone(self.tones[x], delay)
-            self.macropad.pixels[x]=0x000000
-
-        self.macropad.pixels[11]=0x009900
-        
-    
-    def clear_board(self):
-        # show the results
-        for x in range (len(self.colors)):
-            self.macropad.pixels[x] = self.colors[x]
-        
-        # make boop
-        #self.macropad.play_tone(self.tones[7], 0.5)
-        
-
-    def button(self,key):
-        #check to see if we're in selectionMode
-        if self.gameMode=="recording":
-            if key<11:
-            #record it
-                self.macropad.pixels[key]=0x009900
-                self.macropad.play_tone(self.tones[key], 0.2)
-                self.macropad.pixels[key]=self.colors[key]
-                self.sequence.append(key)
-                  
-        if key ==11:
-            print("playback")
-            self.gameMode ="playing"
-            self.play()
-            
-        
-        else:
-            # someone pushed the encoder button
+        self.macropad.pixels.fill((0, 0, 0))
+        try:
+            self.macropad.pixels.show()
+        except AttributeError:
             pass
-
-    def encoderChange(self,newPosition, oldPosition):
-        # use for tempo change??
-        self.tempo = self.tempo +(newPosition-oldPosition)*5
-        print ("new tempo",self.tempo,"bpm")
-
-# keypress
-# take the key number, pull the modifier array, apply
-# check for win
-# show result

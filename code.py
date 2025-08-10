@@ -101,7 +101,7 @@ def start_game_by_name(name):
         macropad.display.root_group = game.group
 
     # Clear any lingering menu LEDs
-    macropad.pixels.fill((0, 0, 0))
+    #macropad.pixels.fill((0, 0, 0))
     return game
 
 # ---------- Main loop state ----------
