@@ -20,6 +20,7 @@ from blackjack13 import blackjack13
 from snake import snake
 from hit_or_miss import hit_or_miss
 from three_shells import three_shells
+from match_it import match_it
 
 # ---------- Setup hardware ----------
 macropad = MacroPad()
@@ -41,7 +42,9 @@ games_factories = {
     "Snake II":      lambda: snake(macropad, tones, True),
     "Hit or Miss":   lambda: hit_or_miss(macropad, tones),
     "Three Shells":  lambda: three_shells(macropad, tones),
+    "Match it":  lambda: match_it(macropad, tones)
 }
+
 game_names = list(games_factories.keys())
 game_instances = {}  # name -> instance (created on first play)
 
