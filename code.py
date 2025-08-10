@@ -19,6 +19,7 @@ from snake import snake
 from hit_or_miss import hit_or_miss
 from three_shells import three_shells
 from match_it import match_it
+from hi_lo import hi_lo
 
 # ---------- Setup hardware ----------
 macropad = MacroPad()
@@ -32,6 +33,7 @@ GAMES_LIST = [
     ("Blackjack 13",  lambda: blackjack13(macropad, tones)),
     ("Echo",          lambda: echo(macropad,  tones)),
     ("Hit or Miss",   lambda: hit_or_miss(macropad, tones)),
+    ("Hi/Lo",         lambda: hi_lo(macropad, tones)),
     ("Magic Square",  lambda: magic_square(macropad, tones)),
     ("Match it",      lambda: match_it(macropad, tones)),
     ("Mindbender",    lambda: mindbender(macropad, tones)),
