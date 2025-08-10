@@ -45,7 +45,7 @@ class blackjack13:
         self.WAVE_SPEED    = 10.0     # LEDs per second (crest speed)
         self.WAVE_SPAN     = 1.4      # crest half-width in LEDs (larger = thicker wave)
         self.TRAIL_DECAY   = 0.85     # per-frame decay of the trail (0.8–0.9 looks good)
-        self.MIN_GLOW      = 0.08     # floor so the trail is faint but visible
+        self.MIN_GLOW      = 0.03     # floor so the trail is faint but visible
 
         # Game state
         self.reset_state()
@@ -215,6 +215,14 @@ class blackjack13:
         self.dealer_phase = "idle"  # "idle" | "drawing" | "resolve" | "done"
         self.dealer_target = 0
         self.dealer_next_time = 0.0
+        
+        # wave-sweep state
+        self.wave_active = False
+        self.wave_buf = [0.0] * 9     # per-LED intensity (0..1) for keys 0..8
+        self.wave_pos = 0.0           # crest position in LED units
+        self.wave_end_pos = 0.0       # when crest has gone past last LED + span
+        self.wave_last = 0.0
+        self.wave_color = self.COLOR_HUMAN
 
     def _lights_clear(self):
         self.mac.pixels.brightness = self.BRIGHT
@@ -312,45 +320,72 @@ class blackjack13:
 
     # --------- Deal animation (non-blocking) ----------
     def _start_deal_anim(self, who, value):
+        # value is how many LEDs to sweep over (1..9)
         self.deal_anim_active = True
         self.deal_for = who
         self.deal_value = max(1, min(9, value))
-        self.deal_last = time.monotonic()
 
+        # wave setup
         self.wave_color = self.COLOR_HUMAN if who == "player" else self.COLOR_CPU
-        self.wave_t = 0.0  # time along the sweep
-        self.WAVE_TOTAL_TIME = self.deal_value * 0.08 + 0.25  # duration tuned to taste
+        self.wave_buf = [0.0] * 9
+        # start just before K0 so the crest eases in
+        self.wave_pos = -self.WAVE_SPAN
+        # finish when crest is past the last lit LED + span
+        self.wave_end_pos = (self.deal_value - 1) + self.WAVE_SPAN
+        self.wave_last = time.monotonic()
+        self.wave_active = True
 
 
     def _run_deal_anim(self, now):
-        # Frame timing
-        if now - self.deal_last < 0.02:
-            return
-        self.deal_last = now
-
-        # Progress along the sweep (0 → 1)
-        self.wave_t += 0.02 / self.WAVE_TOTAL_TIME
-        t = self.wave_t
-
-        # Clear
-        for i in range(9):
-            self.mac.pixels[i] = 0x000000
-
-        # Position of the crest in LED units
-        crest_pos = t * (self.deal_value - 1 + 1.5)  # 1.5 so it moves past last LED
-
-        for i in range(self.deal_value):
-            # Distance from crest
-            dist = i - crest_pos
-
-            # If close enough, brightness is a cosine of distance
-            if -1.0 <= dist <= 1.0:
-                b = 0.5 * (1 + math.cos(dist * math.pi))  # 1 at crest, 0 at ±1
-                self.mac.pixels[i] = self._scale(self.wave_color, 0.35 + 0.65 * b)
-
-        # End condition
-        if t >= 1.0:
+        # Frame cap
+        if not self.wave_active:
+            # legacy safety; stop anim if something’s off
             self.deal_anim_active = False
+            return
+
+        dt = now - self.wave_last
+        if dt < self.WAVE_FRAME_DT:
+            return
+        self.wave_last = now
+
+        # Advance crest
+        self.wave_pos += self.WAVE_SPEED * dt
+
+        # Decay existing intensities (smooth trailing glow)
+        # Raising decay to the power of (dt/frame_dt) keeps speed-independent feel
+        decay = self.TRAIL_DECAY ** (dt / self.WAVE_FRAME_DT)
+        for i in range(self.deal_value):
+            self.wave_buf[i] *= decay
+
+        # Add new cosine crest contribution
+        # Only within +/- WAVE_SPAN contributes; amplitude 0..1
+        span = self.WAVE_SPAN
+        for i in range(self.deal_value):
+            dist = i - self.wave_pos
+            if -span <= dist <= span:
+                # cosine lobe: 1 at crest, 0 at edges (±span)
+                amp = 0.5 * (1.0 + math.cos((dist / span) * math.pi))
+                # keep the brighter of the current trail and the new crest
+                if amp > self.wave_buf[i]:
+                    self.wave_buf[i] = amp
+
+        # Paint LEDs: only the first deal_value keys participate
+        for i in range(9):
+            if i < self.deal_value:
+                b = self.wave_buf[i]
+                if b > 0.001:
+                    level = self.MIN_GLOW + (1.0 - self.MIN_GLOW) * b  # keep a faint floor
+                    self.mac.pixels[i] = self._scale(self.wave_color, level)
+                else:
+                    self.mac.pixels[i] = 0x000000
+            else:
+                self.mac.pixels[i] = 0x000000
+
+        # End condition: crest passed end and trail faded out
+        if (self.wave_pos > self.wave_end_pos) and all(v < 0.02 for v in self.wave_buf[:self.deal_value]):
+            self.wave_active = False
+            self.deal_anim_active = False
+            # leave board dark after the sweep
             for i in range(9):
                 self.mac.pixels[i] = 0x000000
 
