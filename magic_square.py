@@ -43,32 +43,39 @@ class magic_square():
         self.tones = tones
         self.color = 0xff0000
         self.macropad = macropad
-        #self.new_game()
-
+        #self.new_game()        
+        
     def new_game(self):
-        print ("new Magic Square game")
+        print("new Magic Square game")
         try:
             self.macropad.pixels.auto_write = True
         except AttributeError:
             pass
         self.macropad.pixels.brightness = 0.30
-        # show a square for fun
-        self.macropad.pixels.fill((0,0,0))
+        self.macropad.pixels.fill((0, 0, 0))
+
+        # 1) Show wipe first
+        self._start_game_wipe()
+
+        # 2) Proceed into the normal game setup
         self.color = 0x0009ff
         self.state = 0b111101111
         self.show_leds()
         self.color = 0xff0000
-        #generate a new matrix
+
+        # Generate a new matrix (keep this an INT, not a '0b...' string)
         for x in range(8):
             self.state=bin(randint(0, 511))
-        if (self.state == 0b111101111):
-            self.state = self.state + 1
-        print ("starting",self.state)
+        if self.state == 0b111101111:
+            self.state += 1
+
+        print("starting", self.state)
         self.start = self.state
         self.show_leds()
-        #need to change labels
-        self.macropad.pixels[9]=0xff9900
-        self.macropad.pixels[11]=0x00ff00
+
+        # Labels / controls
+        self.macropad.pixels[9]  = 0xff9900  # Same Game
+        self.macropad.pixels[11] = 0x00ff00  # New Game
         
     
     def same_game(self):
@@ -148,6 +155,32 @@ class magic_square():
     def encoderChange(self,newPosition, oldPosition):
         pass
 
+    def _start_game_wipe(self):
+        self.macropad.pixels.brightness = 0.30
+
+        wipe_colors = [
+            0xF400FD, 0xDE04EE, 0xC808DE, 0xB20CCF, 0x9C10C0, 0x8614B0,
+            0x6F19A1, 0x591D91, 0x432182, 0x2D2573, 0x172963, 0x012D54
+        ]
+
+        # Dot sweep over all 12 keys
+        for x in range(12):
+            self.macropad.pixels[x] = 0x000099  # blue dot
+            time.sleep(0.10)
+            self.macropad.pixels[x] = wipe_colors[x]
+
+        # Fade palette down so the game UI can take over cleanly
+        for s in (0.4, 0.2, 0.1, 0.0):
+            for i in range(12):
+                c = wipe_colors[i]
+                r = int(((c >> 16) & 0xFF) * s)
+                g = int(((c >> 8)  & 0xFF) * s)
+                b = int(( c        & 0xFF) * s)
+                self.macropad.pixels[i] = (r << 16) | (g << 8) | b
+            time.sleep(0.02)
+
+        self.macropad.pixels.fill((0, 0, 0))
+    
 # keypress
 # take the key number, pull the modifier array, apply
 # check for win
