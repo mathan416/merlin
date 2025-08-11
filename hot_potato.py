@@ -42,7 +42,6 @@ class hot_potato:
         self.C_ENTER         = 0x00AA00  # green for K11
         self.C_NEW           = 0x202020  # dim white for K9
         self.C_HINT          = 0xFF0000  # red arrows (HI/LO)
-        self.C_WIN           = 0x00FF00  # green for win
         self.C_ERR           = 0xFF0000  # red 'X' for invalid
 
         # Buttons
@@ -54,7 +53,6 @@ class hot_potato:
         # Arrow shapes (as key indexes)
         self.ARROW_UP    = {1, 3, 4, 5, 7, 10}
         self.ARROW_DOWN  = {1, 4, 6, 7, 8, 10}
-        self.ARROW_WIN   = {1, 3, 4, 5, 6, 7, 8, 10}
 
         # Game state
         self.mode = "entry"              # "entry" | "hint" | "won" | "preview"
@@ -67,13 +65,9 @@ class hot_potato:
         self.turn_index = 0              # 0..player_count-1
         self.turns_per_player = [0] * self.player_count
         self.hint_until = 0.0
-        self._win_cleared = False
         
         # --- UI cache / dirtiness ---
         self._ui_dirty = True                  # when True, repaint the static entry UI
-        self._cached_allowed_tens = set()      # last set() of allowed tens we drew
-        self._cached_digits_len = -1           # last len(self.entry_digits) we drew (-1 means never)
-        self._cached_bounds = (-1, -1)         # last (low_bound, high_bound) we drew
 
         # LED driver
         try:
@@ -107,7 +101,6 @@ class hot_potato:
         self.turn_index = 0
         self.player_count = max(2, self.player_count)
         self.turns_per_player = [0] * self.player_count
-        self._win_cleared = False
 
     def button(self, key):
         now = time.monotonic()
@@ -203,10 +196,6 @@ class hot_potato:
 
         # Reset transient UI flags so a future resume/new_game repaints correctly
         self._ui_dirty = True
-        self._cached_allowed_tens = set()
-        self._cached_digits_len = -1
-        self._cached_bounds = (-1, -1)
-
 
     # ---------- Internals ----------
     def _digit_for_key(self, k):
@@ -266,26 +255,6 @@ class hot_potato:
         self._update_status_for_entry()
 
     # ---------- UI paint ----------
-    def _paint_entry_ui(self):
-        # Base all-off
-        for i in range(12):
-            self.mac.pixels[i] = 0x000000
-
-        # Number keys: idle steel-blue
-        for k in self.NUM_KEYS:
-            self.mac.pixels[k] = self.C_NUM_IDLE
-
-        # Guidance: allowed tens buckets glow brighter when no digits typed
-        if not self.entry_digits:
-            for td in self._allowed_tens():
-                key = self._key_for_digit(td)
-                if key is not None:
-                    self.mac.pixels[key] = self.C_NUM_ACTIVE
-
-        # Controls
-        self.mac.pixels[self.K_NEW]   = self.C_NEW
-        # K11 pulsed in tick()
-
     def _allowed_tens(self):
         """Return a set of allowed tens (0..9) given [low_bound..high_bound]."""
         lo_t, hi_t = self.low_bound // 10, self.high_bound // 10
@@ -430,16 +399,11 @@ class hot_potato:
         now = time.monotonic()
         t = now - self.expl_t0
 
-        # Finished?
         if t >= self.expl_total_time:
             self.expl_active = False
             if self.mode == "won":
-                # After a real “boom”, show the won UI so K9 is lit.
                 self._paint_won_ui()
-            # For preview: do nothing here—tick() will transition to entry UI.
             else:
-                # Safety: if we ever trigger an explosion from some other state,
-                # just clear the board.
                 self._lights_off()
                 try: self.mac.pixels.show()
                 except AttributeError: pass
@@ -447,49 +411,61 @@ class hot_potato:
 
         R = t * self.expl_ring_speed
 
-        # Base: off
+        px = self.mac.pixels       # local for speed
+        ignite = self.expl_ignite_at
+        hot_time = self.expl_hot_time
+        inv_hot = 1.0 / hot_time
+        grid_r = self._grid_r
+
+        # clear all
         for i in range(12):
-            self.mac.pixels[i] = 0x000000
+            px[i] = 0x000000
 
-        # Animate K0..K8 (expanding ring from center K4)
+        # animate K0..K8
         for i in range(9):
-            x, y = self._grid_xy[i]
-            r = self._grid_r[i]
+            r = grid_r[i]
 
-            # Ignite this tile when the ring reaches it
-            if self.expl_ignite_at[i] < 0 and R >= r - 0.05:
-                self.expl_ignite_at[i] = now
+            if ignite[i] < 0 and R >= (r - 0.05):
+                ignite[i] = now
 
-            t0 = self.expl_ignite_at[i]
+            t0 = ignite[i]
             if t0 >= 0:
                 age = now - t0
-                u = max(0.0, min(1.0, age / self.expl_hot_time))   # 0..1 during "hot" window
-                heat = 1.0 - self._ease_cos(u)                      # swell then fade
+                u = age * inv_hot
+                if u <= 0.0:
+                    continue
+                if u >= 1.0:
+                    u = 1.0
 
-                # Color ramp: white → warm yellow → orange/red
+                heat = 1.0 - self._ease_cos(u)
+
+                # color ramp
                 if u < 0.15:
                     col = self._blend(0xFFFFFF, 0xFFD040, u / 0.15)
                 else:
-                    v = (u - 0.15) / 0.85
-                    hue = max(0.0, 0.13 * (1.0 - v))               # 0.13→0.0
+                    v = (u - 0.15) * (1.0 / 0.85)
+                    if v > 1.0: v = 1.0
+                    hue = 0.13 * (1.0 - v)
+                    if hue < 0.0: hue = 0.0
                     col = self._hsv_to_rgb(hue, 1.0, 1.0)
 
-                self.mac.pixels[i] = self._scale(col, 0.25 + 0.75 * heat)
+                px[i] = self._scale(col, 0.25 + 0.75 * heat)
 
-        # Center core extra pop while it's fresh
+        # center pop
         c = 4
-        if self.expl_ignite_at[c] >= 0 and (now - self.expl_ignite_at[c]) < (self.expl_hot_time * 0.7):
-            self.mac.pixels[c] = self._blend(self.mac.pixels[c], 0xFFFFFF, 0.5)
+        tc = ignite[c]
+        if tc >= 0:
+            if (now - tc) < (hot_time * 0.7):
+                px[c] = self._blend(px[c], 0xFFFFFF, 0.5)
 
-        # Quick “spark” flicker on K9..K11 for the first ~0.45s
+        # quick sparks on K9..K11
         if t < 0.45:
             for k in self._spark_keys:
                 if random.random() < 0.35:
-                    self.mac.pixels[k] = 0xFFFFFF
+                    px[k] = 0xFFFFFF
 
-        # Draw
         try:
-            self.mac.pixels.show()
+            px.show()
         except AttributeError:
             pass
 
@@ -569,12 +545,6 @@ class hot_potato:
         except Exception:
             pass
 
-    def _tone_at(self, i, fallback):
-        try:
-            return self.tones[i]
-        except Exception:
-            return fallback[i % len(fallback)]
-
     def _click(self, key=None):
         f = 523  # default C5
         if key == self.K_NEW:
@@ -621,9 +591,6 @@ class hot_potato:
                 key = self._key_for_digit(td)
                 if key is not None:
                     self.mac.pixels[key] = self.C_NUM_ACTIVE
-            self._cached_allowed_tens = allowed.copy()
-        else:
-            self._cached_allowed_tens = set()
 
         # Controls (K9 dim; K11 dynamic in tick)
         self.mac.pixels[self.K_NEW] = self.C_NEW
@@ -632,8 +599,6 @@ class hot_potato:
         except AttributeError: pass
 
         # cache what we drew
-        self._cached_digits_len = len(self.entry_digits)
-        self._cached_bounds = (self.low_bound, self.high_bound)
         self._ui_dirty = False
 
     def _paint_entry_dynamic(self, pulse):

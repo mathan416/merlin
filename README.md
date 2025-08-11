@@ -1,4 +1,4 @@
-# merlin
+# Merlin
 Recreation of the **Merlin** electronic handheld game using the Adafruit **MacroPad**, now with additional games and *Master Merlin*-inspired modes.
 
 Firstly - thank you to Keith Tanner for the original starting point code plus the STL files to print a case for the Macropad.

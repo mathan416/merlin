@@ -1,5 +1,45 @@
-# code.py — Merlin emulator launcher for Adafruit MacroPad (CircuitPython 9.x)
-# Originally by Keith Tanner, Updates by Iain Bennett
+# code.py — Merlin Emulator Game Launcher for Adafruit MacroPad (CircuitPython 9.x)
+#
+# This script runs on an Adafruit MacroPad to provide a menu and runtime
+# environment for a collection of Merlin-inspired games. Games are stored as
+# separate Python modules and are loaded dynamically to conserve RAM.
+#
+# Key Features:
+#   • Menu-driven selection of games via the MacroPad rotary encoder.
+#   • Lazy-loading of game modules with targeted unloading to free memory.
+#   • RAM usage monitoring with per-stage and delta reporting for debugging.
+#   • Optional LED “wipe” animation when starting most games.
+#   • Robust import and construction logic to support varying game class signatures.
+#   • Graceful cleanup when returning to the menu from a game.
+#
+# Controls:
+#   • Rotate encoder to scroll through menu items.
+#   • Press encoder to start the selected game.
+#   • Press encoder during a game to return to the menu.
+#   • Keys 0–11 are passed to the active game’s button handlers.
+#
+# Internal Architecture:
+#   • GAMES_REG — Registry of available games.
+#       Each tuple contains:
+#         (Display Name, Module Name, Class Name, Constructor kwargs)
+#       This is the single source of truth for all loadable games.
+#
+#   • start_game_by_name(name) — Loads and starts a game:
+#       1. Optionally plays the LED “wipe” animation.
+#       2. Purges only the game modules listed in GAMES_REG from sys.modules.
+#       3. Imports the game module and retrieves the target class.
+#       4. Attempts to construct the game object with several possible signatures.
+#       5. Calls the game’s new_game() method and sets its display group.
+#
+#   • _purge_game_modules() — Frees RAM by removing all known game modules
+#       from sys.modules, then calls gc.collect().
+#
+#   • Menu state vs. Game state — Controlled by `mode_menu` flag.
+#       When `mode_menu` is True: rotary encoder scrolls menu, press starts game.
+#       When False: encoder and keys are passed to the active game’s handlers.
+#
+# Originally by Keith Tanner
+# Updated and extended by Iain Bennett
 
 print("Loading Merlin")
 import time
@@ -64,23 +104,30 @@ def build_menu_group():
     group = displayio.Group()
     try:
         bmp = displayio.OnDiskBitmap("MerlinChrome.bmp")
-        tile = displayio.TileGrid(bmp, pixel_shader=getattr(bmp, "pixel_shader", displayio.ColorConverter()))
+        tile = displayio.TileGrid(
+            bmp, pixel_shader=getattr(bmp, "pixel_shader", displayio.ColorConverter())
+        )
         group.append(tile)
     except Exception:
         pass
-    title = label.Label(terminalio.FONT, text="choose your game:", color=0xFFFFFF,
-                        anchor_point=(0.5, 0.0),
-                        anchored_position=(macropad.display.width // 2, 31))
-    choice = label.Label(terminalio.FONT, text=" " * 20, color=0xFFFFFF,
-                         anchor_point=(0.5, 0.0),
-                         anchored_position=(macropad.display.width // 2, 45))
+
+    title = label.Label(
+        terminalio.FONT, text="Choose your game:", color=0xFFFFFF,
+        anchor_point=(0.5, 0.0),
+        anchored_position=(macropad.display.width // 2, 31)
+    )
+    choice = label.Label(
+        terminalio.FONT, text=" " * 20, color=0xFFFFFF,
+        anchor_point=(0.5, 0.0),
+        anchored_position=(macropad.display.width // 2, 45)
+    )
     group.append(title)
     group.append(choice)
-    return group
+    return group, title, choice
 
-menu_group = build_menu_group()
+menu_group, title_lbl, choice_lbl = build_menu_group()
 macropad.display.root_group = menu_group
-menu_group[2].text = game_names[0]
+choice_lbl.text = game_names[0]
 
 # ---------- Memory helpers ----------
 def _purge_game_modules():
@@ -136,7 +183,10 @@ def start_game_by_name(name):
     except Exception as e:
         raise ImportError("Failed to import module '{}': {}".format(module_name, e))
         
-    cls = getattr(mod, class_name)
+    try:
+        cls = getattr(mod, class_name)
+    except AttributeError as e:
+        raise ImportError(f"Module '{module_name}' has no class '{class_name}'") from e
     ram_report_delta(snap_import, f"Imported module {module_name}")  # NEW
 
     snap_construct = ram_snapshot()  # NEW
@@ -235,7 +285,7 @@ while True:
     if pos != last_encoder_position:
         if mode_menu:
             idx = pos % len(game_names)
-            menu_group[2].text = game_names[idx]
+            choice_lbl.text = game_names[idx]
         else:
             if current_game and hasattr(current_game, "encoderChange"):
                 try: current_game.encoderChange(pos, last_encoder_position)
@@ -249,7 +299,7 @@ while True:
         if enc_pressed:
             if mode_menu:
                 mode_menu = False
-                menu_group[1].text = "Now Playing:"
+                title_lbl.text = "Now Playing:"
                 sel = game_names[macropad.encoder % len(game_names)]
                 current_game = start_game_by_name(sel)
             else:
@@ -270,7 +320,7 @@ while True:
                 ram_report("Returned to menu")
 
                 mode_menu = True
-                menu_group[1].text = "choose your game:"
+                title_lbl.text = "Choose your game:"
                 enter_menu()
                 
     if mode_menu:
