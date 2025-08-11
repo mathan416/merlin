@@ -1,163 +1,202 @@
 # code.py — Merlin emulator launcher for Adafruit MacroPad (CircuitPython 9.x)
 # Originally by Keith Tanner, Updates by Iain Bennett
-#
-# Overview:
-#   Master menu that lets you browse and launch individual Merlin-style games.
-#   Games are imported as classes and instantiated on demand. The launcher
-#   hands the display and input to the active game, then can reclaim control
-#   when you press the encoder switch again.
-#
-# Controls:
-#   • Rotate encoder : Cycle through available games in the menu.
-#   • Press encoder  : Start the highlighted game (from menu) / return to menu (from a game).
-#   • Keys K0–K11    : Passed through to the active game while running.
-#
-# Behavior:
-#   • Shows a splash/logo if present (MerlinChrome.bmp) on the menu screen.
-#   • Performs a palette “wipe” transition before launching most games
-#     (games listed in SKIP_WIPE handle their own intro).
-#   • Each game is created lazily and stored, so returning to it preserves state
-#     unless the game’s own new_game() resets it.
-#   • If a game implements tick(), button(), button_up(), encoderChange(), or
-#     cleanup(), the launcher will call them at appropriate times.
-#
-# Notes:
-#   • Designed for Adafruit MacroPad running CircuitPython 9.x.
-#   • Uses a shared 12-tone scale for sound; individual games may override.
-#   • Brightness and auto_write are normalized when entering/exiting games.
 
 print("Loading Merlin")
 import time
 import displayio
 import terminalio
+import gc, sys
 from adafruit_display_text import label
 from adafruit_macropad import MacroPad
 
-# ---- Import game classes (no instances yet!) ----
-from mindbender import mindbender
-from magic_square import magic_square
-from echo import echo
-from simon import simon
-from music_machine import music_machine
-from tictactoe import tictactoe
-from blackjack13 import blackjack13
-from snake import snake
-from hit_or_miss import hit_or_miss
-from three_shells import three_shells
-from match_it import match_it
-from hi_lo import hi_lo
-from pair_off import pair_off
+# ---- RAM debug helpers ----
+def ram_snapshot():
+    gc.collect()
+    return (gc.mem_free(), gc.mem_alloc())
+
+def ram_report(label=""):
+    free, alloc = ram_snapshot()
+    print(f"[RAM] {label} — free: {free} bytes, allocated: {alloc} bytes, total: {free+alloc} bytes")
+    return (free, alloc)
+
+def ram_report_delta(before, label=""):
+    """Print the delta vs a prior snapshot tuple returned by ram_snapshot()/ram_report()."""
+    b_free, b_alloc = before
+    a_free, a_alloc = ram_snapshot()
+    df = a_free - b_free
+    da = a_alloc - b_alloc
+    print(f"[RAM Δ] {label} — Δfree: {df} bytes, Δalloc: {da} bytes (now free {a_free}, alloc {a_alloc})")
+    return (a_free, a_alloc)
+
+ram_report("Boot start")
 
 # ---------- Setup hardware ----------
 macropad = MacroPad()
 macropad.pixels.fill((50, 0, 0))  # clear pads
 
 # 12-tone palette
-tones = [196, 220, 247, 262, 294, 330, 349, 392, 440, 494, 523, 587]
+tones = (196, 220, 247, 262, 294, 330, 349, 392, 440, 494, 523, 587)
 
-# ---------- Lazy game factories (no drawing until chosen) ----------
-GAMES_LIST = [
-    ("Blackjack 13",  lambda: blackjack13(macropad, tones)),
-    ("Echo",          lambda: echo(macropad,  tones)),
-    ("Hit or Miss",   lambda: hit_or_miss(macropad, tones)),
-    ("Hi/Lo",         lambda: hi_lo(macropad, tones)),
-    ("Magic Square",  lambda: magic_square(macropad, tones)),
-    ("Match it",      lambda: match_it(macropad, tones)),
-    ("Mindbender",    lambda: mindbender(macropad, tones)),
-    ("Music Machine", lambda: music_machine(macropad, tones)),
-    ("Pair Off",      lambda: pair_off(macropad, tones)),
-    ("Simon",         lambda: simon(macropad, tones)),
-    ("Snake",         lambda: snake(macropad, tones, False)),
-    ("Snake II",      lambda: snake(macropad, tones, True)),
-    ("Three Shells",  lambda: three_shells(macropad, tones)),
-    ("Tic Tac Toe",   lambda: tictactoe(macropad, tones)),
+# ---------- Lazy-load registry instead of pre-import factories ----------
+GAMES_REG = [
+    ("Blackjack 13",  "blackjack13",   "blackjack13",   {}),
+    ("Echo",          "echo",          "echo",          {}),
+    ("Hit or Miss",   "hit_or_miss",   "hit_or_miss",   {}),
+    ("Hi/Lo",         "hi_lo",         "hi_lo",         {}),
+    ("Hot Potato",    "hot_potato",    "hot_potato",    {}),
+    ("Magic Square",  "magic_square",  "magic_square",  {}),
+    ("Match it",      "match_it",      "match_it",      {}),
+    ("Mindbender",    "mindbender",    "mindbender",    {}),
+    ("Music Machine", "music_machine", "music_machine", {}),
+    ("Pair Off",      "pair_off",      "pair_off",      {}),
+    ("Simon",         "simon",         "simon",         {}),
+    ("Snake",         "snake",         "snake",         {"snake2": False}),
+    ("Snake II",      "snake",         "snake",         {"snake2": True}),
+    ("Three Shells",  "three_shells",  "three_shells",  {}),
+    ("Tic Tac Toe",   "tictactoe",     "tictactoe",     {}),
 ]
-games_factories = {name: factory for name, factory in GAMES_LIST}
-game_names = [name for name, _ in GAMES_LIST]
-game_instances = {}  # name -> instance (created on first play)
+game_names = [n for (n, _, _, _) in GAMES_REG]
 
-SKIP_WIPE = {"Echo"}  # games that handle their own intro
+SKIP_WIPE = {"Echo"}
 
 # ---------- Menu UI ----------
 def build_menu_group():
     group = displayio.Group()
-    # Optional splash image
     try:
         bmp = displayio.OnDiskBitmap("MerlinChrome.bmp")
         tile = displayio.TileGrid(bmp, pixel_shader=getattr(bmp, "pixel_shader", displayio.ColorConverter()))
         group.append(tile)
     except Exception:
-        pass  # fine if missing
-
-    title = label.Label(
-        terminalio.FONT, text="choose your game:", color=0xFFFFFF,
-        anchor_point=(0.5, 0.0), anchored_position=(macropad.display.width // 2, 31)
-    )
-    choice = label.Label(
-        terminalio.FONT, text=" " * 20, color=0xFFFFFF,
-        anchor_point=(0.5, 0.0), anchored_position=(macropad.display.width // 2, 45)
-    )
-    group.append(title)   # index 1
-    group.append(choice)  # index 2
+        pass
+    title = label.Label(terminalio.FONT, text="choose your game:", color=0xFFFFFF,
+                        anchor_point=(0.5, 0.0),
+                        anchored_position=(macropad.display.width // 2, 31))
+    choice = label.Label(terminalio.FONT, text=" " * 20, color=0xFFFFFF,
+                         anchor_point=(0.5, 0.0),
+                         anchored_position=(macropad.display.width // 2, 45))
+    group.append(title)
+    group.append(choice)
     return group
 
 menu_group = build_menu_group()
 macropad.display.root_group = menu_group
-# show initial selection
 menu_group[2].text = game_names[0]
 
-# ---------- Helpers ----------
+# ---------- Memory helpers ----------
+def _purge_game_modules():
+    # New targeted purge: remove only our game modules
+    game_modnames = {mod for (_, mod, _, _) in GAMES_REG}
+    todel = [m for m in list(sys.modules) if m in game_modnames]
+
+    for m in todel:
+        try:
+            del sys.modules[m]
+        except Exception:
+            pass
+    gc.collect()
+    ram_report("After purge")
+
+# ---------- Menu/Game switching ----------
 def enter_menu():
-    # normalize pixel behavior for menu
-    try:
-        macropad.pixels.auto_write = True
-    except AttributeError:
-        pass
+    try: macropad.pixels.auto_write = True
+    except AttributeError: pass
     macropad.pixels.brightness = 0.30
-    macropad.pixels.fill((50, 0, 0))  # menu hint
+    macropad.pixels.fill((50, 0, 0))
     macropad.display.root_group = menu_group
 
 def start_game_by_name(name):
-    # Let each game manage auto_write itself; just clear first
-    macropad.pixels.fill((0, 0, 0))
+    # BEFORE LOADING snapshot
+    snap_before = ram_report(f"Before loading {name}")  # NEW
 
-    # Do the unified wipe unless this game opts out
+    macropad.pixels.fill((0, 0, 0))
     if name not in SKIP_WIPE:
         play_global_wipe(macropad)
 
-    game = game_instances.get(name)
-    if game is None:
-        game = games_factories[name]()  # create on demand
-        game_instances[name] = game
+    # Purge previously loaded game modules
+    _purge_game_modules()
+    ram_report_delta(snap_before, f"After purge (pre-load {name})")  # NEW
 
-    # Start it
+    # Lazy import + instantiate
+    # rec = next((r for r in GAMES_REG if r[0] == name), None)  # <-- breaks on CircuitPython
+    rec_iter = (r for r in GAMES_REG if r[0] == name)
+    try:
+        rec = next(rec_iter)
+    except StopIteration:
+        rec = None
+
+    if not rec:
+        raise ValueError("Unknown game: " + name)
+    _, module_name, class_name, kwargs = rec
+    kwargs = dict(kwargs)
+
+    snap_import = ram_snapshot()  # NEW
+
+    try:
+        mod = __import__(module_name)
+    except Exception as e:
+        raise ImportError("Failed to import module '{}': {}".format(module_name, e))
+        
+    cls = getattr(mod, class_name)
+    ram_report_delta(snap_import, f"Imported module {module_name}")  # NEW
+
+    snap_construct = ram_snapshot()  # NEW
+    
+    # --- BEGIN: KWARG ADAPTERS FOR SPECIAL CASES ---
+    # Snake expects 'wraparound', but our registry uses 'snake2'
+    if module_name == "snake" and "snake2" in kwargs:
+        kwargs = {"wraparound": bool(kwargs["snake2"])}
+    # --- END: KWARG ADAPTERS ---
+
+    # Robust constructor: try common signatures in order.
+    game = None
+    ctor_err = None
+    for attempt in (
+        lambda: cls(macropad, tones, **kwargs),  # preferred (most games)
+        lambda: cls(macropad, **kwargs),         # some games only take macropad + kwargs
+        lambda: cls(macropad, tones),            # legacy two-arg
+        lambda: cls(macropad),                   # oldest style: only macropad
+    ):
+        try:
+            game = attempt()
+            ctor_err = None
+            break
+        except TypeError as e:
+            ctor_err = e
+        except Exception as e:
+            ctor_err = e
+
+    if game is None:
+        raise TypeError(
+            "Couldn't construct game "
+            + class_name
+            + " with any known signature. Last error: "
+            + str(ctor_err)
+        )
+
+    ram_report_delta(snap_construct, f"Constructed {class_name}")  # NEW
+
+    gc.collect()
+    ram_report_delta(snap_before, f"Total delta after loading {name}")  # NEW
+
     game.new_game()
 
-    # Hand display to the game UI if provided
     if hasattr(game, "group") and game.group is not None:
         macropad.display.root_group = game.group
 
     return game
 
+# ---------- Wipe ----------
 def play_global_wipe(mac):
-    # Match the other games' behavior/timing
-    try:
-        old_auto = mac.pixels.auto_write
-    except AttributeError:
-        old_auto = True
-    try:
-        mac.pixels.auto_write = False
-    except AttributeError:
-        pass
-
+    snap_wipe = ram_snapshot()
+    try: old_auto = mac.pixels.auto_write
+    except AttributeError: old_auto = True
+    try: mac.pixels.auto_write = False
+    except AttributeError: pass
     mac.pixels.brightness = 0.30
-
     wipe_colors = [
         0xF400FD, 0xDE04EE, 0xC808DE, 0xB20CCF, 0x9C10C0, 0x8614B0,
         0x6F19A1, 0x591D91, 0x432182, 0x2D2573, 0x172963, 0x012D54
     ]
-
-    # Dot sweep over all 12 keys → reveal palette
     for x in range(12):
         mac.pixels[x] = 0x000099
         try: mac.pixels.show()
@@ -166,38 +205,32 @@ def play_global_wipe(mac):
         mac.pixels[x] = wipe_colors[x]
         try: mac.pixels.show()
         except AttributeError: pass
-
-    # Fade palette to black
     for s in (0.4, 0.2, 0.1, 0.0):
         for i in range(12):
             c = wipe_colors[i]
             r = int(((c >> 16) & 0xFF) * s)
             g = int(((c >> 8)  & 0xFF) * s)
-            b = int(( c        & 0xFF) * s)
+            b = int((c & 0xFF) * s)
             mac.pixels[i] = (r << 16) | (g << 8) | b
         try: mac.pixels.show()
         except AttributeError: pass
         time.sleep(0.02)
-
     mac.pixels.fill((0, 0, 0))
     try: mac.pixels.show()
     except AttributeError: pass
+    try: mac.pixels.auto_write = old_auto
+    except AttributeError: pass
+    ram_report_delta(snap_wipe, "Global wipe")
 
-    # Restore original auto_write
-    try:
-        mac.pixels.auto_write = old_auto
-    except AttributeError:
-        pass
-    
-# ---------- Main loop state ----------
+# ---------- Main loop ----------
 mode_menu = True
 last_encoder_position = macropad.encoder
 last_encoder_switch = False
 current_game = None
 
-# ---------- Main loop ----------
+ram_report("After setup complete")
+
 while True:
-    # --- encoder turn ---
     pos = macropad.encoder
     if pos != last_encoder_position:
         if mode_menu:
@@ -205,48 +238,49 @@ while True:
             menu_group[2].text = game_names[idx]
         else:
             if current_game and hasattr(current_game, "encoderChange"):
-                try:
-                    current_game.encoderChange(pos, last_encoder_position)
-                except Exception as e:
-                    print("encoderChange error:", e)
+                try: current_game.encoderChange(pos, last_encoder_position)
+                except Exception as e: print("encoderChange error:", e)
         last_encoder_position = pos
 
-    # --- encoder press (toggle menu/game) ---
     macropad.encoder_switch_debounced.update()
     enc_pressed = macropad.encoder_switch_debounced.pressed
     if enc_pressed != last_encoder_switch:
         last_encoder_switch = enc_pressed
         if enc_pressed:
             if mode_menu:
-                # Enter game
                 mode_menu = False
                 menu_group[1].text = "Now Playing:"
                 sel = game_names[macropad.encoder % len(game_names)]
                 current_game = start_game_by_name(sel)
             else:
                 # Return to menu
-                # Give the active game a chance to clean up LEDs/auto_write
+                snap_pre_unload = ram_snapshot()  # NEW
+
                 try:
                     if current_game and hasattr(current_game, "cleanup"):
                         current_game.cleanup()
                 except Exception as e:
                     print("cleanup error:", e)
+                current_game = None
+
+                _purge_game_modules()
+
+                gc.collect()
+                ram_report_delta(snap_pre_unload, "After unloading game & purge")  # NEW
+                ram_report("Returned to menu")
+
                 mode_menu = True
                 menu_group[1].text = "choose your game:"
                 enter_menu()
-
+                
     if mode_menu:
         time.sleep(0.01)
         continue
 
-    # --- game tick/update ---
     if current_game and hasattr(current_game, "tick"):
-        try:
-            current_game.tick()
-        except Exception as e:
-            print("tick error:", e)
+        try: current_game.tick()
+        except Exception as e: print("tick error:", e)
 
-    # --- key events to active game ---
     evt = macropad.keys.events.get()
     if evt:
         key = evt.key_number
@@ -259,4 +293,3 @@ while True:
                         current_game.button_up(key)
             except Exception as e:
                 print("button error:", e)
-                
