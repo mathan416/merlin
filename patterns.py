@@ -456,6 +456,36 @@ class patterns:
         if now >= self._show_until:
             self._in_gap = True
             self._gap_until = now + self.STREAM_GAP
+    
+    def _render_stream(self, now):
+        # Clear frame
+        self._led_fill(0)
+
+        # Show current pattern frame (only during SHOW phase)
+        idx = max(0, min(self.stream_idx, len(self.stream)-1)) if self.stream else 0
+        if 0 <= idx < len(self.stream) and not self._in_gap:
+            s, b, _ = self.stream[idx]
+            blink_on = self._blink_on(now)
+            for i in s:
+                self._led_set(i, self.COLOR_SOLID)
+            for i in b:
+                self._led_set(i, self.COLOR_BLINK if blink_on else 0x000000)
+
+        # UI keys
+        if self.players == 1:
+            # 1P: K11 pulses (Stop)
+            self._led_set(self.K_COMP, self._scale(self.COLOR_UI, 0.18 + 0.35 * self._pulse(now)))
+        else:
+            # 2P: both buzzers pulse (either can stop)
+            self._led_set(self.P1_BUZZ, self._scale(self.COLOR_UI, 0.12 + 0.30 * self._pulse(now)))
+            self._led_set(self.P2_BUZZ, self._scale(self.COLOR_UI, 0.12 + 0.30 * self._pulse(now)))
+
+        # "New" key (K9 in 1P, K10 in 2P) dim
+        self._led_set(self._key_same(), self._scale(self.COLOR_UI, 0.10))
+
+        self._led_show()
+        self._hud_play(streaming=True)
+    
 
     def _on_stop(self, buzzer):
         if getattr(self, "_stopped", False):
@@ -540,34 +570,15 @@ class patterns:
         self._led_show()
         self._hud_play(streaming=False)
 
-    def _render_stream(self, now):
-        self._led_fill(0)
-        idx = max(0, min(self.stream_idx, len(self.stream)-1)) if self.stream else 0
-        if 0 <= idx < len(self.stream) and not self._in_gap:
-            s,b,_ = self.stream[idx]
-            blink_on = self._blink_on(now)
-            for i in s: self._led_set(i, self.COLOR_SOLID)
-            for i in b: self._led_set(i, self.COLOR_BLINK if blink_on else 0x000000)
-
-        # UI keys
-        if self.players == 1:
-            self._led_set(self.K_COMP, self._scale(self.COLOR_UI, 0.18 + 0.35*self._pulse(now)))
-        else:
-            self._led_set(self.P1_BUZZ, self._scale(self.COLOR_UI, 0.12 + 0.30*self._pulse(now)))
-            self._led_set(self.P2_BUZZ, self._scale(self.COLOR_UI, 0.12 + 0.30*self._pulse(now)))
-        self._led_set(self._key_same(), self._scale(self.COLOR_UI, 0.10))
-        self._led_show()
-        self._hud_play(streaming=True)
-
     def _render_result(self, now):
         self._led_fill(0)
 
-        # --- Winner crown branch ---
+        # --- Winner crown (2P): gold cross + winner's buzzer; loser dim; no pips/pattern ---
         if self.players == 2 and self._win_game_player:
             pulse = 0.30 + 0.60 * self._pulse(now)
             gold  = self._scale(0xFFD200, pulse)
 
-            # Clear 3x3 grid and both buzzer LEDs first
+            # Clear board + buzzers
             for i in range(9): self._led_set(i, 0)
             self._led_set(self.P1_BUZZ, 0)
             self._led_set(self.P2_BUZZ, 0)
@@ -575,15 +586,13 @@ class patterns:
             winner_key = self.P1_BUZZ if self._win_game_player == 1 else self.P2_BUZZ
             loser_key  = self.P2_BUZZ if self._win_game_player == 1 else self.P1_BUZZ
 
-            # Crown in gold
-            for i in (1, 3, 4, 5, 7):
-                self._led_set(i, gold)
-            # Winner buzzer in gold
+            # Crown and winner buzzer
+            for i in (1, 3, 4, 5, 7): self._led_set(i, gold)
             self._led_set(winner_key, gold)
-            # Loser buzzer shown like the "New" hint (dim white)
+            # Loser dim
             self._led_set(loser_key, self._scale(self.COLOR_UI, 0.10))
 
-            # UI hints, but don't overwrite winner or loser buzzers
+            # UI
             if self._key_same() not in (winner_key, loser_key):
                 self._led_set(self._key_same(), self._scale(self.COLOR_UI, 0.10))
             if self.K_COMP not in (winner_key, loser_key):
@@ -592,26 +601,46 @@ class patterns:
             self._led_show()
             return
 
-        # --- No winner yet: original result behavior ---
-
-        # Show the correct pattern (pulsing)
-        pulse = 0.55 + 0.35 * self._pulse(now * 0.6)
-        for i in self.target_solid:
-            self._led_set(i, self._scale(self.COLOR_SOLID, pulse))
-        if self._blink_on(now):
-            for i in self.target_blink:
-                self._led_set(i, self._scale(self.COLOR_BLINK, pulse))
-
+        # --- No winner yet ---
         if self.players == 2:
-            if self._result_buzzer in (1, 2):
-                k = self.P1_BUZZ if self._result_buzzer == 1 else self.P2_BUZZ
-                self._led_set(k, self._scale(self.COLOR_UI, 0.20 + 0.60 * self._pulse(now)))
-            # Score pips
-            for i in range(min(self.p1, 3)): self._led_set(6 + i, 0x00FF40)
-            for i in range(min(self.p2, 3)): self._led_set(i,       0x00FF40)
-            if self.p1 >= 4: self._led_set(5, 0x00FF40)
-            if self.p2 >= 4: self._led_set(3, 0x00FF40)
+            # Clear board so only pips (and buzzers) show
+            for i in range(9): self._led_set(i, 0)
 
+            # Pulsing pips
+            pip_level = 0.30 + 0.70 * self._pulse(now)
+            pip_color = self._scale(0x00FF40, pip_level)
+
+            # P1 pips: K6,K7,K8,(K5)
+            for i in range(min(self.p1, 3)): self._led_set(6 + i, pip_color)
+            if self.p1 >= 4: self._led_set(5, pip_color)
+
+            # P2 pips: K0,K1,K2,(K3)
+            for i in range(min(self.p2, 3)): self._led_set(i, pip_color)
+            if self.p2 >= 4: self._led_set(3, pip_color)
+
+            # Buzzers:
+            if self._result == "wrong":
+                # WRONG: make K9 and K11 behave/appear the same (both pulse)
+                level = 0.20 + 0.60 * self._pulse(now)
+                both = self._scale(self.COLOR_UI, level)
+                self._led_set(self.P1_BUZZ, both)
+                self._led_set(self.P2_BUZZ, both)
+            else:
+                # CORRECT (no game win yet): highlight the side that buzzed
+                if self._result_buzzer in (1, 2):
+                    k = self.P1_BUZZ if self._result_buzzer == 1 else self.P2_BUZZ
+                    self._led_set(k, self._scale(self.COLOR_UI, 0.20 + 0.60 * self._pulse(now)))
+
+        else:
+            # 1P: show the correct pattern
+            pulse = 0.55 + 0.35 * self._pulse(now * 0.6)
+            for i in self.target_solid:
+                self._led_set(i, self._scale(self.COLOR_SOLID, pulse))
+            if self._blink_on(now):
+                for i in self.target_blink:
+                    self._led_set(i, self._scale(self.COLOR_BLINK, pulse))
+
+        # UI keys
         self._led_set(self._key_same(), self._scale(self.COLOR_UI, 0.10))
         self._led_set(self.K_COMP, self._scale(self.COLOR_UI, 0.12 + 0.30 * self._pulse(now)))
         self._led_show()
