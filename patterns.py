@@ -460,6 +460,8 @@ class patterns:
             self._gap_until = now + self.STREAM_GAP
 
     def _on_stop(self, buzzer):
+        if self._in_gap and self.stream_idx < 0:
+            return
         # Ignore double-presses
         if getattr(self, "_stopped", False):
             return

@@ -182,7 +182,6 @@ CPU can win, block, and follow basic strategies. Includes animated endgame pulse
 - Add Master Merlin games
    - Score - Will be based on Music Maker code
    - Musical Ladder
-   - Patterns - Based on Hit or Miss code
 
 ## Won't Dos
 
