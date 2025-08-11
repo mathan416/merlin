@@ -1,4 +1,4 @@
-# Merlin
+# Merlin Launch Architecture
 Recreation of the **Merlin** electronic handheld game using the Adafruit **MacroPad**, now with additional games and *Master Merlin*-inspired modes.
 
 Firstly — thank you to Keith Tanner for the original starting point code plus the STL files to print a case for the Macropad.
@@ -16,14 +16,15 @@ Firstly — thank you to Keith Tanner for the original starting point code plus 
 3. [⚠️ Known Limitations & RAM Constraints](#️-known-limitations--ram-constraints)
 4. [State Diagram (Menu ↔ Game)](#state-diagram-menu--game)
 5. [Event → Action Summary](#event--action-summary)
-6. [🧠 Why We Log RAM](#-why-we-log-ram)
-7. [RAM Logging Flow](#ram-logging-flow)
-8. [Sequence Diagram](#sequence-diagram)
-9. [🚀 Porting a Game](#-porting-a-game-checklist)
+6. [RAM Handling]](#-ram-handling)
+    - [🧠 Why We Log RAM](#-why-we-log-ram)
+    - [RAM Logging Flow](#ram-logging-flow)
+    - [RAM-handling Sequence Flow](#ram-handling-sequence-flow)
+7. [🚀 Porting a Game](#-porting-a-game-checklist)
     - [TL;DR Checklist](#tldr--porting-a-game)
     - [Detailed Guidance](#detail--porting-a-game)
     - [Minimal Skeleton Template](#minimal-skeleton-template)
-10. [Appendix: Notes](#appendix-notes)
+8. [Appendix: Notes](#appendix-notes)
 
 ---
 
@@ -135,7 +136,8 @@ The Adafruit MacroPad M4 has **192 KB SRAM** total, with **CircuitPython 9.x** c
 
 ---
 
-## 🧠 Why We Log RAM
+## 🧠 RAM Handling
+### 🧠 Why We Log RAM
 CircuitPython has **no virtual memory**—if you run out of RAM, the interpreter stops with `MemoryError`.  
 Logging RAM lets us:
 - Track asset-heavy games that push limits.
@@ -145,7 +147,7 @@ Logging RAM lets us:
 
 ---
 
-## RAM Logging Flow
+### RAM Logging Flow
 | Log line (prefix)                              | When it happens                                 |
 |-----------------------------------------------|--------------------------------------------------|
 | `[RAM] Boot start`                             | Immediately after import/setup begins            |
@@ -162,7 +164,7 @@ Logging RAM lets us:
 
 ---
 
-## 📊 Example RAM Usage Log
+### 📊 Example RAM Usage Log
 
 This is an example of healthy RAM usage when loading and unloading a game.  
 Use it as a benchmark — if your game shows significantly higher deltas, you may need to optimize.
@@ -189,7 +191,7 @@ Use it as a benchmark — if your game shows significantly higher deltas, you ma
 
 ---
 
-## RAM-handling Sequence Flow
+### RAM-handling Sequence Flow
 ```mermaid
 sequenceDiagram
   autonumber
