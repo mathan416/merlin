@@ -375,8 +375,6 @@ class hot_potato:
         self.expl_total_time = 1.1     # overall effect duration
         self.expl_ignite_at = [-1.0] * 12
         self._grid_r = [((i%3 - 1)**2 + (i//3 - 1)**2) ** 0.5 for i in range(9)]
-        # Precompute grid coords for K0..K8 (others unused here)
-        self._grid_xy = [(i % 3, i // 3) for i in range(9)] + [None, None, None]
         self._spark_keys = []
 
     def start_explosion(self):

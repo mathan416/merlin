@@ -18,26 +18,6 @@
 #   • Press encoder during a game to return to the menu.
 #   • Keys 0–11 are passed to the active game’s button handlers.
 #
-# Internal Architecture:
-#   • GAMES_REG — Registry of available games.
-#       Each tuple contains:
-#         (Display Name, Module Name, Class Name, Constructor kwargs)
-#       This is the single source of truth for all loadable games.
-#
-#   • start_game_by_name(name) — Loads and starts a game:
-#       1. Optionally plays the LED “wipe” animation.
-#       2. Purges only the game modules listed in GAMES_REG from sys.modules.
-#       3. Imports the game module and retrieves the target class.
-#       4. Attempts to construct the game object with several possible signatures.
-#       5. Calls the game’s new_game() method and sets its display group.
-#
-#   • _purge_game_modules() — Frees RAM by removing all known game modules
-#       from sys.modules, then calls gc.collect().
-#
-#   • Menu state vs. Game state — Controlled by `mode_menu` flag.
-#       When `mode_menu` is True: rotary encoder scrolls menu, press starts game.
-#       When False: encoder and keys are passed to the active game’s handlers.
-#
 # Originally by Keith Tanner
 # Updated and extended by Iain Bennett
 

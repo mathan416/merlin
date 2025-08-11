@@ -142,6 +142,7 @@ Logging RAM lets us:
 - Spot memory leaks from games not cleaning up.
 - Compare pre-load and post-cleanup RAM usage.
 
+
 ---
 
 ## RAM Logging Flow
@@ -158,6 +159,33 @@ Logging RAM lets us:
 | `[RAM Δ] Total delta after loading {name}`     | After GC, comparing to the pre-load snapshot     |
 | `[RAM Δ] After unloading game & purge`         | When exiting a game back to menu                 |
 | `[RAM] Returned to menu`                       | After returning to the menu UI                   |
+
+---
+
+## 📊 Example RAM Usage Log
+
+This is an example of healthy RAM usage when loading and unloading a game.  
+Use it as a benchmark — if your game shows significantly higher deltas, you may need to optimize.
+
+```
+[RAM] Boot start:  Free=58240  Alloc=108000
+[RAM] After setup complete:  Free=55408  Alloc=110832
+[RAM] Before loading Snake:  Free=55296  Alloc=110944
+[RAM Δ] Global wipe:  ΔFree=-64  ΔAlloc=+64
+[RAM] After purge:  Free=56736  Alloc=109504
+[RAM Δ] After purge (pre-load Snake):  ΔFree=+1440  ΔAlloc=-1440
+[RAM Δ] Imported module snake:  ΔFree=-3200  ΔAlloc=+3200
+[RAM Δ] Constructed snake:  ΔFree=-4096  ΔAlloc=+4096
+[RAM Δ] Total delta after loading Snake:  ΔFree=-5376  ΔAlloc=+5376
+[RAM Δ] After unloading game & purge:  ΔFree=+5312  ΔAlloc=-5312
+[RAM] Returned to menu:  Free=56704  Alloc=109536
+```
+
+**Interpretation tips:**
+- **ΔFree** should be near zero after unloading & purge.
+- Large negative deltas after load indicate big memory spikes — check image/audio sizes.
+- If **Free** RAM drops below ~20 KB during gameplay, you risk `MemoryError` crashes.
+- If **ΔFree** after unload stays negative, there may be lingering references (memory leak).
 
 ---
 
