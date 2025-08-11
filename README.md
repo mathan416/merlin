@@ -160,15 +160,18 @@ CPU can win, block, and follow basic strategies. Includes animated endgame pulse
 - echo.py
 - hit_or_miss.py
 - hi_lo.py
+- hot_potato.py
 - magic_square.py
 - match_it.py
 - mindbender.py
 - music_machine.py
 - pair_off.py
+- patterns.py
 - simon.py
 - snake.py
 - three_shells.py
 - tictactoe.py
+- my_game.py           # Sample starter template to add your own game
 - MerlinChrome.bmp     # Merlin-style chrome frame for menu
 - lib/                 # Required Adafruit CircuitPython libraries
 
@@ -180,7 +183,6 @@ CPU can win, block, and follow basic strategies. Includes animated endgame pulse
    - Score - Will be based on Music Maker code
    - Musical Ladder
    - Patterns - Based on Hit or Miss code
-   - Hot Potato - Based on the Hi/Lo code
 
 ## Won't Dos
 

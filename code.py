@@ -69,6 +69,7 @@ GAMES_REG = [
     ("Mindbender",    "mindbender",    "mindbender",    {}),
     ("Music Machine", "music_machine", "music_machine", {}),
     ("Pair Off",      "pair_off",      "pair_off",      {}),
+    ("Patterns",      "patterns",      "patterns",      {}),
     ("Simon",         "simon",         "simon",         {}),
     ("Snake",         "snake",         "snake",         {"snake2": False}),
     ("Snake II",      "snake",         "snake",         {"snake2": True}),

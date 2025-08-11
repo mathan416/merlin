@@ -227,7 +227,7 @@ sequenceDiagram
 
   %% Purge old game modules
   L->>P: _purge_game_modules()
-  P->>P: del sys.modules[...]  
+  P->>P: del sys.modules[...]
   P->>P: gc.collect()
   P->>R: ram_report("After purge")
   Note over P,R: [RAM] After purge
@@ -277,6 +277,21 @@ sequenceDiagram
   L->>R: ram_report("Returned to menu")
   Note over L,R: [RAM] Returned to menu
   L->>D: enter_menu()
+
+  %% ---- COLOR STYLES ----
+  %% Normal RAM reports = green
+  style 2 stroke:#22aa22,stroke-width:2px
+  style 6 stroke:#22aa22,stroke-width:2px
+  style 18 stroke:#22aa22,stroke-width:2px
+  style 40 stroke:#22aa22,stroke-width:2px
+
+  %% RAM delta reports = orange
+  style 13 stroke:#ff8800,stroke-width:2px
+  style 22 stroke:#ff8800,stroke-width:2px
+  style 31 stroke:#ff8800,stroke-width:2px
+  style 36 stroke:#ff8800,stroke-width:2px
+  style 43 stroke:#ff8800,stroke-width:2px
+  style 53 stroke:#ff8800,stroke-width:2px
 ```
 
 ---
