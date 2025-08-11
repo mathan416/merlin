@@ -193,41 +193,84 @@ Use it as a benchmark — if your game shows significantly higher deltas, you ma
 ```mermaid
 sequenceDiagram
     autonumber
-    participant L as Launcher (code.py)
-    participant W as Wipe (LED animation)
-    participant P as Purger (RAM cleanup)
-    participant G as Game (dynamic module)
+    participant U as Encoder Press (User)
+    participant L as Main Loop (while True)
+    participant R as RAM Logs<br/>(ram_snapshot/ram_report/_delta)
+    participant W as play_global_wipe()
+    participant P as _purge_game_modules()
+    participant I as __import__ + getattr()
+    participant C as Game Constructor
+    participant G as Game Instance
+    participant D as Display Root Group
 
-    L->>L: [RAM] Boot start
-    Note over L: Hardware init and menu build
-    L->>L: [RAM] After setup complete
+    %% -------- Boot & Setup --------
+    note over L,R: [RAM] Boot start
+    L->>R: ram_report("Boot start")
+    L->>D: build_menu_group() + set root_group
+    note over L,R: [RAM] After setup complete
+    L->>R: ram_report("After setup complete")
 
-    loop [Main loop]
-        alt [Encoder press in menu]
-            L->>L: [RAM] Before loading {name}
-            alt [Not in SKIP_WIPE]
-                L->>W: play_global_wipe()
-                W-->>L: [RAM Δ] Global wipe
-            end
-            L->>P: _purge_game_modules()
-            P-->>L: [RAM] After purge
-            L->>L: [RAM Δ] After purge (pre-load {name})
-            L->>L: import {module}
-            L->>L: [RAM Δ] Imported module {module}
-            L->>L: construct game(...)
-            L->>L: [RAM Δ] Constructed {ClassName}
-            L->>L: gc.collect()
-            L->>L: [RAM Δ] Total delta after loading {name}
-            L->>G: new_game()
-            L->>L: set display group
-        else [Encoder press in game]
-            L->>L: snapshot pre-unload
-            L->>G: cleanup() if present
-            L->>P: _purge_game_modules() + gc.collect()
-            P-->>L: [RAM Δ] After unloading & purge
-            L->>L: [RAM] Returned to menu
-        end
+    %% -------- Start Game (encoder press in menu) --------
+    U->>L: Press encoder (in menu)
+    L->>R: ram_report(f"Before loading {name}")<br/>note right of R: [RAM] Before loading {name}
+
+    alt name NOT in SKIP_WIPE
+        L->>W: play_global_wipe(macropad)
+        W-->>R: ram_report_delta(snap_wipe,"Global wipe")
+        note over W,R: [RAM Δ] Global wipe
+    else name in SKIP_WIPE
+        note over L: (Skip wipe for Echo)
     end
+
+    %% Purge previously loaded game modules
+    L->>P: _purge_game_modules()
+    P->>P: del sys.modules[game_modnames]; gc.collect()
+    P-->>R: ram_report("After purge")
+    note over P,R: [RAM] After purge
+    L->>R: ram_report_delta(snap_before, f"After purge (pre-load {name})")
+    note over L,R: [RAM Δ] After purge (pre-load {name})
+
+    %% Import module and find class
+    L->>R: snap_import = ram_snapshot()
+    L->>I: mod = __import__(module_name); cls = getattr(mod, class_name)
+    I-->>R: ram_report_delta(snap_import, f"Imported module {module_name}")
+    note over I,R: [RAM Δ] Imported module {module}
+
+    %% Construct game (tries multiple signatures)
+    L->>R: snap_construct = ram_snapshot()
+    L->>C: Try cls(macropad, tones, **kwargs) → fallbacks
+    C-->>R: ram_report_delta(snap_construct, f"Constructed {ClassName}")
+    note over C,R: [RAM Δ] Constructed {ClassName}
+
+    %% Post-load GC + total delta, then start
+    L->>L: gc.collect()
+    L->>R: ram_report_delta(snap_before, f"Total delta after loading {name}")
+    note over L,R: [RAM Δ] Total delta after loading {name}
+    L->>G: game.new_game()
+    alt game has group
+        L->>D: macropad.display.root_group = game.group
+    end
+
+    %% -------- Gameplay tick & input loop --------
+    loop While playing
+        L->>G: tick() (if present)
+        U->>G: button()/button_up() via events
+        U->>L: Press encoder (to exit)
+    end
+
+    %% -------- Exit Game → Return to Menu --------
+    U->>L: Press encoder (exit)
+    L->>R: snap_pre_unload = ram_snapshot()
+    alt game has cleanup()
+        L->>G: cleanup()
+    end
+    L->>L: current_game = None
+    L->>P: _purge_game_modules() + gc.collect()
+    P-->>R: ram_report_delta(snap_pre_unload, "After unloading game & purge")
+    note over P,R: [RAM Δ] After unloading game & purge
+    L->>R: ram_report("Returned to menu")
+    note over L,R: [RAM] Returned to menu
+    L->>D: enter_menu() → set root_group back to menu
 ```
 
 ---
