@@ -16,7 +16,7 @@ Firstly — thank you to Keith Tanner for the original starting point code plus 
 3. [⚠️ Known Limitations & RAM Constraints](#️-known-limitations--ram-constraints)
 4. [State Diagram (Menu ↔ Game)](#state-diagram-menu--game)
 5. [Event → Action Summary](#event--action-summary)
-6. [RAM Handling]](#-ram-handling)
+6. [🧠 RAM Handling](#-ram-handling)
     - [🧠 Why We Log RAM](#-why-we-log-ram)
     - [RAM Logging Flow](#ram-logging-flow)
     - [RAM-handling Sequence Flow](#ram-handling-sequence-flow)
