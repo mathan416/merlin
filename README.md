@@ -165,10 +165,11 @@ CPU can win, block, and follow basic strategies. Includes animated endgame pulse
 - match_it.py
 - mindbender.py
 - music_machine.py
+- musical_ladder.py
 - pair_off.py
 - patterns.py
 - simon.py
-- snake.py
+- snake.py             # Supports two variants - Snake and Snake II
 - three_shells.py
 - tictactoe.py
 - my_game.py           # Sample starter template to add your own game
@@ -181,7 +182,6 @@ CPU can win, block, and follow basic strategies. Includes animated endgame pulse
 - Reconfirm Sounds for all games
 - Add Master Merlin games
    - Score - Will be based on Music Maker code
-   - Musical Ladder
 
 ## Won't Dos
 

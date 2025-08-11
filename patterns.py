@@ -298,7 +298,8 @@ class patterns:
 
     # ---------- Pattern utilities ----------
     # 90° rotation mapping for 3x3
-    _ROT90 = {0:6,1:3,2:0,3:7,4:4,5:1,6:8,7:5,8:2}
+    _ROT90_CCW = {0:6,1:3,2:0,3:7,4:4,5:1,6:8,7:5,8:2}
+    _ROT90     = {0:2,1:5,2:8,3:1,4:4,5:7,6:0,7:3,8:6}
 
     def _rot_set(self, cells, k):
         out = set(cells)
