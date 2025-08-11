@@ -193,39 +193,48 @@ Use it as a benchmark — if your game shows significantly higher deltas, you ma
 ```mermaid
 sequenceDiagram
     autonumber
-    participant CP as CircuitPython VM
     participant L as Launcher (code.py)
-    participant W as Wipe
-    participant P as Purger
-    participant G as Game
+    participant W as Wipe (LED animation)
+    participant P as Purger (RAM cleanup)
+    participant G as Game (dynamic module)
 
-    CP->>L: start
+    %% Boot and initialization
     L->>L: [RAM] Boot start
-    Note over L: Hardware init, menu build
+    note over L: Hardware init and menu build
     L->>L: [RAM] After setup complete
 
-    loop main loop
-        alt Menu: encoder press (start game)
+    %% Main loop handles encoder presses
+    loop Main loop
+        alt Encoder press in menu
             L->>L: [RAM] Before loading {name}
-            L->>W: play_global_wipe() (if not in SKIP_WIPE)
-            W-->>L: [RAM Δ] Global wipe
+
+            %% Optional wipe animation
+            alt Not in SKIP_WIPE
+                L->>W: play_global_wipe()
+                W-->>L: [RAM Δ] Global wipe
+            end
+
+            %% Purge previous game modules
             L->>P: _purge_game_modules()
             P-->>L: [RAM] After purge
-            L->>L: [RAM Δ] After purge (pre-load {name})
-            L->>L: import {module}
-            L->>L: get {Class}
-            L->>G: construct game(...)
-            G-->>L: [RAM Δ] Constructed {ClassName}
+
+            %% Import and construct game
+            L->>L: import module / get class
+            L->>L: [RAM Δ] Imported module
+            L->>L: construct game(...)
+            L->>L: [RAM Δ] Constructed game
             L->>L: gc.collect()
-            L->>L: [RAM Δ] Total delta after loading {name}
+            L->>L: [RAM Δ] Total delta after load
+
+            %% Start new game and hand over display
             L->>G: new_game()
-            L->>L: set display group
-        else Game: encoder press (exit)
-            L->>G: cleanup() (if present)
-            L->>L: snapshot pre-unload
-            L->>P: _purge_game_modules()
-            L->>L: gc.collect()
-            P-->>L: [RAM Δ] After unloading game & purge
+            L->>L: Set display group
+        else Encoder press in game
+            %% Cleanup and return to menu
+            L->>G: cleanup() if present
+            L->>L: Snapshot pre-unload
+            L->>P: _purge_game_modules() + gc.collect()
+            P-->>L: [RAM Δ] After unloading & purge
             L->>L: [RAM] Returned to menu
         end
     end
