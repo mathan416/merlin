@@ -206,7 +206,8 @@ sequenceDiagram
   %% Boot & setup
   Note over L,R: [RAM] Boot start
   L->>R: ram_report("Boot start")
-  L->>D: build_menu_group(); set root_group
+  L->>D: build_menu_group()
+  L->>D: set root_group
   Note over L,R: [RAM] After setup complete
   L->>R: ram_report("After setup complete")
 
@@ -224,7 +225,8 @@ sequenceDiagram
 
   %% Purge old game modules
   L->>P: _purge_game_modules()
-  P->>P: del sys.modules[...] + gc.collect()
+  P->>P: del sys.modules[...]  
+  P->>P: gc.collect()
   P->>R: ram_report("After purge")
   Note over P,R: [RAM] After purge
   L->>R: ram_report_delta(snap_before, "After purge (pre-load {name})")
@@ -232,13 +234,14 @@ sequenceDiagram
 
   %% Import module + class
   L->>R: snap_import = ram_snapshot()
-  L->>I: __import__(module_name); getattr(class_name)
+  L->>I: __import__(module_name)
+  L->>I: getattr(class_name)
   I->>R: ram_report_delta(snap_import, "Imported module {module_name}")
   Note over I,R: [RAM Δ] Imported module {module_name}
 
   %% Construct game
   L->>R: snap_construct = ram_snapshot()
-  L->>C: Try constructors (macropad, tones, **kwargs → fallbacks)
+  L->>C: Try constructors with fallbacks
   C->>R: ram_report_delta(snap_construct, "Constructed {ClassName}")
   Note over C,R: [RAM Δ] Constructed {ClassName}
 
@@ -248,14 +251,14 @@ sequenceDiagram
   Note over L,R: [RAM Δ] Total delta after loading {name}
   L->>G: game.new_game()
   alt game has group
-    L->>D: display.root_group = game.group
+    L->>D: set display.root_group to game.group
   end
 
   %% Gameplay loop (simplified)
   loop While playing
     L->>G: tick()
     U->>G: button()/button_up()
-    U->>L: (may press encoder to exit)
+    U->>L: encoder press to exit
   end
 
   %% Exit game → back to menu
