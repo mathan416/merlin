@@ -3,6 +3,11 @@
 # Written by Iain Bennett — 2025
 # Inspired by Keith Tanner's Merlin for the Macropad
 #
+# hot_potato.py — Master Merlin "Hot Potato" for Adafruit MacroPad
+# CircuitPython 8.x / 9.x compatible, non-blocking animations
+# Written by Iain Bennett — 2025
+# Inspired by Keith Tanner's Merlin for the Macropad
+#
 # Hot Potato is a party guessing game: there’s a secret number (0–99). Players
 # take turns guessing; Merlin shows HI or LO after each guess. Whoever guesses
 # the hot number “gets burned” (explosion!) and everyone else wins.
@@ -12,10 +17,10 @@
 # keys whose digits (0..9) match possible tens for the next guess will glow.
 #
 # Controls:
-#   • K0..K8 — Digits 1–9
-#   • K10    — Digit 0
-#   • K11    — Enter guess
-#   • K9     — New game
+#   • K0..K8  – digits 1 to 9
+#   • K10     – digit 0
+#   • K11     – Enter: submit the guess
+#   • K9      – New game (allowed during play or after a win)
 #
 # Features:
 #   • Startup explosion preview
@@ -24,6 +29,26 @@
 #   • Invalid/repeat guess: red “X” flash and error tone; turn does not advance
 #   • Tracks player_count and per-player turn counts (default 2 players)
 #   • Non-blocking explosion effect on win
+#
+# Design Notes / Key Features
+#  • Non‑blocking effects:  All animations (guidance pulse, arrows, explosion)
+#    are time‑based using time.monotonic(); the main loop stays responsive.
+#  • Simple numeric entry:  Players press digit keys (K0–K8 for 1‑9, K10 for 0)
+#    up to two digits, then confirm with Enter (K11).  Excess digits shift.
+#  • Allowed‑tens guidance:  When no digits are typed, keys whose digit matches
+#    a valid tens value in the current [low_bound…high_bound] flash brighter.
+#  • Range enforcement and duplicate checking:  Guesses outside the current
+#    bounds or repeats prompt a red “X” flash and an error tone; turn is lost.
+#  • HI/LO feedback:  A correct guess triggers a non‑blocking explosion.
+#    Higher guesses flash a red “up” arrow; lower guesses flash a red “down”.
+#  • Multi‑player support:  Tracks `player_count` (minimum 2) and per‑player
+#    turn counts; automatically advances the turn index after each valid guess.
+#  • UI caching:  Uses a “dirty” flag (`_ui_dirty`) to avoid repainting static
+#    keypad state on every tick, improving performance.  Dynamic effects
+#    (e.g., pulsing Enter key) are updated each frame.
+#  • Cleanup:  `cleanup()` restores pixels and auto_write state when exiting.
+#
+
 
 import time, math, random
 import displayio, terminalio
