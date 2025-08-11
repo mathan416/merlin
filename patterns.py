@@ -456,7 +456,60 @@ class patterns:
         if now >= self._show_until:
             self._in_gap = True
             self._gap_until = now + self.STREAM_GAP
-    
+            
+    def _render_preview(self, now):
+        """Show the target pattern before the stream starts."""
+        self._led_fill(0)
+
+        # Draw target (solid = red, blink = blue)
+        blink_on = self._blink_on(now)
+        for i in self.target_solid:
+            self._led_set(i, self.COLOR_SOLID)
+        for i in self.target_blink:
+            self._led_set(i, self.COLOR_BLINK if blink_on else 0x000000)
+
+        # UI keys
+        # In 2P: show both buzzers dim so either can start; in 1P: only COMP matters
+        if self.players == 2:
+            self._led_set(self.P1_BUZZ, self._scale(self.COLOR_UI, 0.10))
+            self._led_set(self.P2_BUZZ, self._scale(self.COLOR_UI, 0.10))
+
+        self._led_set(self.K_COMP,     self._scale(self.COLOR_UI, 0.12 + 0.30 * self._pulse(now)))
+        self._led_set(self._key_same(), self._scale(self.COLOR_UI, 0.10))
+
+        self._led_show()
+        self._hud_play(streaming=False)
+        
+    def _render_stream(self, now):
+        """While streaming: step patterns and render current frame."""
+        self._led_fill(0)
+
+        # Draw the currently showing pattern (only during SHOW phase)
+        if self.stream and (0 <= self.stream_idx < len(self.stream)) and (not self._in_gap):
+            s, b, _ = self.stream[self.stream_idx]
+            blink_on = self._blink_on(now)
+            for i in s:
+                self._led_set(i, self.COLOR_SOLID)
+            for i in b:
+                self._led_set(i, self.COLOR_BLINK if blink_on else 0x000000)
+
+        # UI keys
+        if self.players == 1:
+            # 1P: K11 is the stop key
+            self._led_set(self.K_COMP, self._scale(self.COLOR_UI, 0.18 + 0.35 * self._pulse(now)))
+        else:
+            # 2P: K9 and K11 both act as buzzers (identical behavior)
+            pulse = self._pulse(now)
+            glow  = self._scale(self.COLOR_UI, 0.12 + 0.30 * pulse)
+            self._led_set(self.P1_BUZZ, glow)
+            self._led_set(self.P2_BUZZ, glow)
+
+        # "New" (Same) key is always available to back out
+        self._led_set(self._key_same(), self._scale(self.COLOR_UI, 0.10))
+
+        self._led_show()
+        self._hud_play(streaming=True)
+        
     def _render_result(self, now):
         self._led_fill(0)
 
@@ -501,27 +554,27 @@ class patterns:
             self._led_show()
             return
 
-        # 2P and no winner: SHOW ONLY PIPS (clear the 3×3 so nothing peeks through)
-        for i in range(9):
-            self._led_set(i, 0)
+    # 2P and no winner: SHOW ONLY PIPS (clear the 3×3 so nothing peeks through)
+    for i in range(9):
+        self._led_set(i, 0)
 
-        # Score pips, symmetric for both sides
-        for i in range(min(self.p1, 3)): self._led_set(6 + i, 0x00FF40)  # P1: K6,K7,K8
-        for i in range(min(self.p2, 3)): self._led_set(0 + i, 0x00FF40)  # P2: K0,K1,K2
-        if self.p1 >= 4: self._led_set(5, 0x00FF40)  # P1 4th pip
-        if self.p2 >= 4: self._led_set(3, 0x00FF40)  # P2 4th pip
+    # Score pips, symmetric for both sides
+    for i in range(min(self.p1, 3)): self._led_set(6 + i, 0x00FF40)  # P1: K6,K7,K8
+    for i in range(min(self.p2, 3)): self._led_set(0 + i, 0x00FF40)  # P2: K0,K1,K2
+    if self.p1 >= 4: self._led_set(5, 0x00FF40)  # P1 4th pip
+    if self.p2 >= 4: self._led_set(3, 0x00FF40)  # P2 4th pip
 
-        # Both buzzers behave the SAME: both are "Next" and light identically (no winner highlight)
-        pulse = self._pulse(now)
-        next_glow = self._scale(self.COLOR_UI, 0.12 + 0.30 * pulse)
-        self._led_set(self.P1_BUZZ, next_glow)
-        self._led_set(self.P2_BUZZ, next_glow)
+    # Both buzzers behave the SAME: both are "Next" and light identically (no winner highlight)
+    pulse = self._pulse(now)
+    next_glow = self._scale(self.COLOR_UI, 0.12 + 0.30 * pulse)
+    self._led_set(self.P1_BUZZ, next_glow)
+    self._led_set(self.P2_BUZZ, next_glow)
 
-        # "New" dim + K11 (COMP) pulsing as an additional "Next"
-        self._led_set(self._key_same(), self._scale(self.COLOR_UI, 0.10))
-        self._led_set(self.K_COMP,     self._scale(self.COLOR_UI, 0.12 + 0.30 * pulse))
+    # "New" dim + K11 (COMP) pulsing as an additional "Next"
+    self._led_set(self._key_same(), self._scale(self.COLOR_UI, 0.10))
+    self._led_set(self.K_COMP,     self._scale(self.COLOR_UI, 0.12 + 0.30 * pulse))
 
-        self._led_show()
+    self._led_show()
 
 
 
