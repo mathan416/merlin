@@ -189,7 +189,12 @@ class patterns:
             return
 
         if self.mode == "result":
-            if key == self.K_COMP:
+            # 2P: either buzzer OR K11 advances to the next round
+            if self.players == 2 and key in (self.P1_BUZZ, self.P2_BUZZ, self.K_COMP):
+                self._start_round()
+                return
+            # 1P: K11 still advances
+            if self.players == 1 and key == self.K_COMP:
                 self._start_round()
             return
 
@@ -557,31 +562,40 @@ class patterns:
     def _render_result(self, now):
         self._led_fill(0)
 
-        # If there’s a winner, show only the gold crown (no pattern, no pips)
+        # --- Winner crown branch ---
         if self.players == 2 and self._win_game_player:
-            pulse = 0.30 + 0.60*self._pulse(now)
+            pulse = 0.30 + 0.60 * self._pulse(now)
             gold  = self._scale(0xFFD200, pulse)
 
-            # Clear the 3x3 grid so nothing peeks through
-            for i in range(9):
-                self._led_set(i, 0)
+            # Clear 3x3 grid and both buzzer LEDs first
+            for i in range(9): self._led_set(i, 0)
+            self._led_set(self.P1_BUZZ, 0)
+            self._led_set(self.P2_BUZZ, 0)
 
-            # Crown: center cross + winner’s buzzer key
+            winner_key = self.P1_BUZZ if self._win_game_player == 1 else self.P2_BUZZ
+            loser_key  = self.P2_BUZZ if self._win_game_player == 1 else self.P1_BUZZ
+
+            # Crown in gold
             for i in (1, 3, 4, 5, 7):
                 self._led_set(i, gold)
-            buzzer_key = self.P1_BUZZ if self._win_game_player == 1 else self.P2_BUZZ
-            self._led_set(buzzer_key, gold)
+            # Winner buzzer in gold
+            self._led_set(winner_key, gold)
+            # Loser buzzer shown like the "New" hint (dim white)
+            self._led_set(loser_key, self._scale(self.COLOR_UI, 0.10))
 
-            # (Skip pips entirely when we have a winner)
-            self._led_set(self._key_same(), self._scale(self.COLOR_UI, 0.10))
-            self._led_set(self.K_COMP,     self._scale(self.COLOR_UI, 0.12 + 0.30*self._pulse(now)))
+            # UI hints, but don't overwrite winner or loser buzzers
+            if self._key_same() not in (winner_key, loser_key):
+                self._led_set(self._key_same(), self._scale(self.COLOR_UI, 0.10))
+            if self.K_COMP not in (winner_key, loser_key):
+                self._led_set(self.K_COMP, self._scale(self.COLOR_UI, 0.12 + 0.30 * self._pulse(now)))
+
             self._led_show()
             return
 
-        # --- No winner yet: original behavior below ---
+        # --- No winner yet: original result behavior ---
 
         # Show the correct pattern (pulsing)
-        pulse = 0.55 + 0.35*self._pulse(now*0.6)
+        pulse = 0.55 + 0.35 * self._pulse(now * 0.6)
         for i in self.target_solid:
             self._led_set(i, self._scale(self.COLOR_SOLID, pulse))
         if self._blink_on(now):
@@ -589,18 +603,17 @@ class patterns:
                 self._led_set(i, self._scale(self.COLOR_BLINK, pulse))
 
         if self.players == 2:
-            if self._result_buzzer in (1,2):
+            if self._result_buzzer in (1, 2):
                 k = self.P1_BUZZ if self._result_buzzer == 1 else self.P2_BUZZ
-                self._led_set(k, self._scale(self.COLOR_UI, 0.20 + 0.60*self._pulse(now)))
-
-            # Score pips (only when no winner yet)
-            for i in range(min(self.p1, 3)): self._led_set(6+i, 0x00FF40)
-            for i in range(min(self.p2, 3)): self._led_set(i,     0x00FF40)
+                self._led_set(k, self._scale(self.COLOR_UI, 0.20 + 0.60 * self._pulse(now)))
+            # Score pips
+            for i in range(min(self.p1, 3)): self._led_set(6 + i, 0x00FF40)
+            for i in range(min(self.p2, 3)): self._led_set(i,       0x00FF40)
             if self.p1 >= 4: self._led_set(5, 0x00FF40)
             if self.p2 >= 4: self._led_set(3, 0x00FF40)
 
         self._led_set(self._key_same(), self._scale(self.COLOR_UI, 0.10))
-        self._led_set(self.K_COMP,     self._scale(self.COLOR_UI, 0.12 + 0.30*self._pulse(now)))
+        self._led_set(self.K_COMP, self._scale(self.COLOR_UI, 0.12 + 0.30 * self._pulse(now)))
         self._led_show()
 
     # ---------- Sound helpers ----------
