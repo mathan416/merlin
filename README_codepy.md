@@ -198,41 +198,31 @@ sequenceDiagram
     participant P as Purger (RAM cleanup)
     participant G as Game (dynamic module)
 
-    %% Boot and initialization
     L->>L: [RAM] Boot start
-    note over L: Hardware init and menu build
+    Note over L: Hardware init and menu build
     L->>L: [RAM] After setup complete
 
-    %% Main loop handles encoder presses
-    loop Main loop
-        alt Encoder press in menu
+    loop [Main loop]
+        alt [Encoder press in menu]
             L->>L: [RAM] Before loading {name}
-
-            %% Optional wipe animation
-            alt Not in SKIP_WIPE
+            alt [Not in SKIP_WIPE]
                 L->>W: play_global_wipe()
                 W-->>L: [RAM Δ] Global wipe
             end
-
-            %% Purge previous game modules
             L->>P: _purge_game_modules()
             P-->>L: [RAM] After purge
-
-            %% Import and construct game
-            L->>L: import module / get class
-            L->>L: [RAM Δ] Imported module
+            L->>L: [RAM Δ] After purge (pre-load {name})
+            L->>L: import {module}
+            L->>L: [RAM Δ] Imported module {module}
             L->>L: construct game(...)
-            L->>L: [RAM Δ] Constructed game
+            L->>L: [RAM Δ] Constructed {ClassName}
             L->>L: gc.collect()
-            L->>L: [RAM Δ] Total delta after load
-
-            %% Start new game and hand over display
+            L->>L: [RAM Δ] Total delta after loading {name}
             L->>G: new_game()
-            L->>L: Set display group
-        else Encoder press in game
-            %% Cleanup and return to menu
+            L->>L: set display group
+        else [Encoder press in game]
+            L->>L: snapshot pre-unload
             L->>G: cleanup() if present
-            L->>L: Snapshot pre-unload
             L->>P: _purge_game_modules() + gc.collect()
             P-->>L: [RAM Δ] After unloading & purge
             L->>L: [RAM] Returned to menu
