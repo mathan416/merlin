@@ -23,8 +23,8 @@ class patterns:
     # 0 1 2
     # 3 4 5
     # 6 7 8
-    K_NEW    = 10            # 2P: New Game/Back on K10
-    K_NEW_1P = 9             # 1P: New Game/Back on K9
+    K_NEW     = 10           # 2P: New Game/Back on K10
+    K_NEW_1P  = 9            # 1P: New Game/Back on K9
     K_COMP    = 11           # Computer Turn (start stream / stop in 1P)
     P1_BUZZ   = 9            # 2P: Player 1 buzzer (K9)
     P2_BUZZ   = 11           # 2P: Player 2 buzzer (K11)
@@ -193,7 +193,7 @@ class patterns:
             if self.players == 2 and key in (self.P1_BUZZ, self.P2_BUZZ, self.K_COMP):
                 self._start_round()
                 return
-            # 1P: K11 still advances
+            # 1P: K11 advances
             if self.players == 1 and key == self.K_COMP:
                 self._start_round()
             return
@@ -293,7 +293,6 @@ class patterns:
         else:
             self._win_game_player = None
 
-        self._t_result = time.monotonic()
         self._hud_result()
         self._dbg("RESULT:", outcome, "buzzer:", buzzer, "scores:", (self.p1, self.p2), "streak:", self.streak)
 
@@ -434,6 +433,9 @@ class patterns:
                         self._dbg("\n" + self._grid_ascii(s, b))
                         break
 
+        # keep for debugging / future features
+        self._correct_idx = correct_idx
+
     # ---------- Streaming logic ----------
     def _advance_stream(self, now):
         # GAP phase -> move to SHOW when gap expires
@@ -456,7 +458,52 @@ class patterns:
         if now >= self._show_until:
             self._in_gap = True
             self._gap_until = now + self.STREAM_GAP
-            
+
+    def _on_stop(self, buzzer):
+        # Ignore double-presses
+        if getattr(self, "_stopped", False):
+            return
+        self._stopped = True
+
+        # Use the currently showing index
+        idx = max(0, self.stream_idx)
+        if 0 <= idx < len(self.stream):
+            _, _, is_match = self.stream[idx]
+            outcome = "correct" if is_match else "wrong"
+        else:
+            outcome = "wrong"
+
+        self._dbg("STOP on idx", idx, "buzzer", buzzer, "=>", outcome)
+        self._to_result(outcome, buzzer=buzzer)
+        
+    def _render_ui(self, now):
+        self._led_fill(0)
+        pulse = self._pulse(now)
+
+        if self.mode == "mode":
+            # Highlight 1P (K3) and 2P (K5) choices
+            self._led_set(3, self._scale(self.COLOR_HINT, 0.25 + 0.60 * pulse))
+            self._led_set(5, self._scale(self.COLOR_HINT, 0.25 + 0.60 * pulse))
+            self._set_hud("1P    2P", "Select Mode")
+
+        elif self.mode == "level":
+            # Light L1–L4 (K0–K3)
+            for k in (0, 1, 2, 3):
+                self._led_set(k, self._scale(self.COLOR_UI, 0.15 + 0.70 * pulse))
+
+            # Dim “New/Back” key (K9 in 1P, K10 in 2P)
+            self._led_set(self._key_same(), self._scale(self.COLOR_UI, 0.10))
+
+            # Optional: in 2P, hint that both buzzers are used in play
+            if self.players == 2:
+                dim = self._scale(self.COLOR_UI, 0.10)
+                self._led_set(self.P1_BUZZ, dim)
+                self._led_set(self.P2_BUZZ, dim)
+
+            self._set_hud("Choose Level", "L1  L2  L3  L4")
+
+        self._led_show()
+
     def _render_preview(self, now):
         """Show the target pattern before the stream starts."""
         self._led_fill(0)
@@ -473,13 +520,13 @@ class patterns:
         if self.players == 2:
             self._led_set(self.P1_BUZZ, self._scale(self.COLOR_UI, 0.10))
             self._led_set(self.P2_BUZZ, self._scale(self.COLOR_UI, 0.10))
-
-        self._led_set(self.K_COMP,     self._scale(self.COLOR_UI, 0.12 + 0.30 * self._pulse(now)))
+        else:
+            self._led_set(self.K_COMP,      self._scale(self.COLOR_UI, 0.12 + 0.30 * self._pulse(now)))
         self._led_set(self._key_same(), self._scale(self.COLOR_UI, 0.10))
 
         self._led_show()
         self._hud_play(streaming=False)
-        
+
     def _render_stream(self, now):
         """While streaming: step patterns and render current frame."""
         self._led_fill(0)
@@ -509,7 +556,7 @@ class patterns:
 
         self._led_show()
         self._hud_play(streaming=True)
-        
+
     def _render_result(self, now):
         self._led_fill(0)
 
@@ -534,7 +581,7 @@ class patterns:
 
             # "New" dim and K11 (COMP) pulsing as usual
             self._led_set(self._key_same(), self._scale(self.COLOR_UI, 0.10))
-            self._led_set(self.K_COMP,     self._scale(self.COLOR_UI, 0.12 + 0.30 * self._pulse(now)))
+            self._led_set(self.K_COMP,      self._scale(self.COLOR_UI, 0.12 + 0.30 * self._pulse(now)))
             self._led_show()
             return
 
@@ -550,33 +597,68 @@ class patterns:
 
             # UI
             self._led_set(self._key_same(), self._scale(self.COLOR_UI, 0.10))
-            self._led_set(self.K_COMP,     self._scale(self.COLOR_UI, 0.12 + 0.30 * self._pulse(now)))
+            self._led_set(self.K_COMP,      self._scale(self.COLOR_UI, 0.12 + 0.30 * self._pulse(now)))
             self._led_show()
             return
+        else:
+            # 2P and no winner: SHOW ONLY PIPS (clear the 3×3 so nothing peeks through)
+            for i in range(9):
+                self._led_set(i, 0)
 
-    # 2P and no winner: SHOW ONLY PIPS (clear the 3×3 so nothing peeks through)
-    for i in range(9):
-        self._led_set(i, 0)
+            # Score pips, symmetric for both sides
+            for i in range(min(self.p1, 3)):
+                self._led_set(6 + i, 0x00FF40)  # P1: K6,K7,K8
+            for i in range(min(self.p2, 3)):
+                self._led_set(0 + i, 0x00FF40)  # P2: K0,K1,K2
+            if self.p1 >= 4:
+                self._led_set(5, 0x00FF40)      # P1 4th pip
+            if self.p2 >= 4:
+                self._led_set(3, 0x00FF40)      # P2 4th pip
 
-    # Score pips, symmetric for both sides
-    for i in range(min(self.p1, 3)): self._led_set(6 + i, 0x00FF40)  # P1: K6,K7,K8
-    for i in range(min(self.p2, 3)): self._led_set(0 + i, 0x00FF40)  # P2: K0,K1,K2
-    if self.p1 >= 4: self._led_set(5, 0x00FF40)  # P1 4th pip
-    if self.p2 >= 4: self._led_set(3, 0x00FF40)  # P2 4th pip
+            # Both buzzers behave the SAME: both are "Next" and light identically
+            pulse = self._pulse(now)
+            next_glow = self._scale(self.COLOR_UI, 0.12 + 0.30 * pulse)
+            self._led_set(self.P1_BUZZ, next_glow)
+            self._led_set(self.P2_BUZZ, next_glow)
 
-    # Both buzzers behave the SAME: both are "Next" and light identically (no winner highlight)
-    pulse = self._pulse(now)
-    next_glow = self._scale(self.COLOR_UI, 0.12 + 0.30 * pulse)
-    self._led_set(self.P1_BUZZ, next_glow)
-    self._led_set(self.P2_BUZZ, next_glow)
+            # "New" dim + K11 (COMP) pulsing as an additional "Next"
+            self._led_set(self._key_same(), self._scale(self.COLOR_UI, 0.10))
+            self._led_set(self.K_COMP,      self._scale(self.COLOR_UI, 0.12 + 0.30 * pulse))
 
-    # "New" dim + K11 (COMP) pulsing as an additional "Next"
-    self._led_set(self._key_same(), self._scale(self.COLOR_UI, 0.10))
-    self._led_set(self.K_COMP,     self._scale(self.COLOR_UI, 0.12 + 0.30 * pulse))
+            self._led_show()
 
-    self._led_show()
+    # ---------- HUD helpers ----------
+    def _hud_play(self, streaming=False):
+        if self.players == 1:
+            if streaming:
+                self._set_hud("Find the Match", "New    Stop")
+            else:
+                self._set_hud("Memorize Pattern", "New    Start")
+        else:
+            if streaming:
+                self._set_hud("Buzz on the Match", "P1    New    P2")
+            else:
+                self._set_hud("Memorize Pattern", "P1    New    P2")
 
-
+    def _hud_result(self):
+        if self.players == 1:
+            if self._result == "correct":
+                self._set_hud(f"Correct — Streak {self.streak}", "New    Next")
+            elif self._result == "timeout":
+                self._set_hud("Timeout — Streak 0", "New    Next")
+            else:
+                self._set_hud("Wrong — Streak 0", "New    Next")
+        else:
+            score = f"P1 {self.p1}   P2 {self.p2}"
+            if self._win_game_player:
+                self._set_hud(f"Winner: P{self._win_game_player}", score)
+            else:
+                if self._result == "timeout":
+                    self._set_hud("No Buzz", score)
+                else:
+                    side = f"P{self._result_buzzer}"
+                    verdict = "Correct" if self._result == "correct" else "Wrong"
+                    self._set_hud(f"{side}: {verdict}", score)
 
     # ---------- Sound helpers ----------
     def _play(self, f, d):
@@ -613,6 +695,11 @@ class patterns:
         self._led_dirty = False
         try: self.mac.pixels.show()
         except AttributeError: pass
+
+    def _blink_on(self, now):
+        # Clean 50% duty blinking
+        phase = (now * self.BLINK_HZ) % 1.0
+        return phase < 0.5
 
     def _pulse(self, now):
         return 0.5 + 0.5 * math.cos(now * 2 * math.pi * 0.8)
