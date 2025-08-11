@@ -210,18 +210,21 @@ sequenceDiagram
             L->>W: play_global_wipe() (if not in SKIP_WIPE)
             W-->>L: [RAM Δ] Global wipe
             L->>P: _purge_game_modules()
-            P-->>L: [RAM] After purge<br/>[RAM Δ] After purge (pre-load {name})
-            L->>L: import {module} / get {Class}
-            L->>L: [RAM Δ] Imported module {module}
+            P-->>L: [RAM] After purge
+            L->>L: [RAM Δ] After purge (pre-load {name})
+            L->>L: import {module}
+            L->>L: get {Class}
             L->>G: construct game(...)
             G-->>L: [RAM Δ] Constructed {ClassName}
             L->>L: gc.collect()
             L->>L: [RAM Δ] Total delta after loading {name}
-            L->>G: new_game(); set display group
-        else In-game: encoder press (exit)
+            L->>G: new_game()
+            L->>L: set display group
+        else Game: encoder press (exit)
             L->>G: cleanup() (if present)
             L->>L: snapshot pre-unload
-            L->>P: _purge_game_modules() + gc
+            L->>P: _purge_game_modules()
+            L->>L: gc.collect()
             P-->>L: [RAM Δ] After unloading game & purge
             L->>L: [RAM] Returned to menu
         end
