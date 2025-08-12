@@ -1,6 +1,79 @@
-# tempo.py — TEMPO (1 player) for Adafruit MacroPad (CircuitPython 8.x/9.x)
-# Compose up to 47 notes (including rests), play back the tune,
-# and support edit/new via K9 single/double press with LED animations.
+# tempo.py — “TEMPO” (1-Player) for Adafruit MacroPad
+# CircuitPython 8.x / 9.x compatible
+#
+# Inspired by the original Master Merlin “Tempo” game:
+#   The classic handheld let you compose a tune (up to 47 notes, including
+#   rests) and then have it played back, controlling how long each note
+#   was held. This MacroPad version preserves the core idea but adapts it
+#   for modern hardware, with RGB key lighting, adjustable playback tempo,
+#   and LED animations for feedback.
+#
+# Game Objective:
+#   Compose a short tune (up to 47 notes) using the MacroPad’s keys, then
+#   have MASTER MERLIN play it back to you at your chosen tempo. You can
+#   edit notes, insert rests, and replay the tune at any time. A single
+#   press of K9 deletes the last note; a double press starts a brand-new
+#   tune. K9 includes LED pulse/flash animations for visual feedback.
+#
+# Controls (0-based key numbering, adapted from 1-based in Merlin manual):
+#   • K0        = Low “sol” (tones[0])
+#   • K1..K8    = Musical scale do..do (tones[3]..tones[10])
+#                 Keys are lit in a gradient red→yellow→green→blue.
+#   • K9        = Edit / New Game
+#                 - Single click: Remove last note (LED pulse)
+#                 - Double click: Start new game (two LED flashes)
+#   • K10       = Rest (LED blue)
+#   • K11       = “Computer Turn” – playback once at current tempo
+#                 (LED red idle, green during playback)
+#
+# Gameplay:
+#   1. Use K0–K8 to compose notes, K10 for rests, K9 to edit.
+#   2. Use encoder to adjust tempo BPM (40–240).
+#   3. Press K11 to hear the full tune played back once.
+#   4. K9 double click clears and starts a new composition.
+#
+# LED Behavior:
+#   • All note keys are dimmed according to LED_DIM (gamma-corrected).
+#   • K9 pulses or flashes based on single/double press.
+#   • During playback, the played note’s key is lit grey temporarily.
+#     K10 (rest) highlights for rest duration.
+#   • K11 turns green for the duration of playback, then back to idle red.
+#
+# Display:
+#   Top line    = Status (e.g., “Tempo”, “Playback”, BPM)
+#   Bottom line = Control hints (“Edit  Rest  Play”)
+#
+# Constants:
+#   MAX_TUNE_LEN   – Maximum notes in composition (47)
+#   REST           – Marker for rests in tune list
+#   DOUBLE_CLICK_S – Time window for K9 double-click
+#   LED_DIM        – Brightness scaling factor (0–1), gamma-corrected
+#   _COL_*         – Color constants for various keys and states
+#   DEFAULT_TONES  – Frequencies (Hz) for low sol + diatonic scale
+#
+# Notes:
+#   • All LED updates are dim-aware via _apply_dim().
+#   • Playback timing uses 75% of the beat for tone, 25% gap.
+#   • The encoder adjusts tempo in ±2 BPM steps (±5 BPM for fast turns).
+#   • Original Master Merlin mapping was 1-based; this implementation
+#     uses MacroPad’s 0-based key numbering for code clarity.
+#
+# --- Button Mapping: Master Merlin (1-based) → MacroPad (0-based) ---
+#
+# Merlin #   MacroPad Key   Function
+# --------   ------------   ------------------------------------------
+#    1            K0        Low “sol”  (tones[0])
+#    2            K1        do         (tones[3])
+#    3            K2        re         (tones[4])
+#    4            K3        mi         (tones[5])
+#    5            K4        fa         (tones[6])
+#    6            K5        sol        (tones[7])
+#    7            K6        la         (tones[8])
+#    8            K7        ti         (tones[9])
+#    9            K8        do         (tones[10])
+#   10            K9        Edit (single) / New Game (double)
+#   11           K10        Rest
+#   12           K11        Computer Turn (playback)
 
 import time
 import displayio, terminalio
