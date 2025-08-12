@@ -48,8 +48,21 @@ def ram_report_delta(before, label=""):
     print(f"[RAM Δ] {label} — Δfree: {df} bytes, Δalloc: {da} bytes (now free {a_free}, alloc {a_alloc})")
     return (a_free, a_alloc)
 
+# ---- Input flush helper ----
 ram_report("Boot start")
 
+def flush_inputs():
+    # Drain all pending key events
+    while True:
+        e = macropad.keys.events.get()
+        if not e:
+            break
+    # Update encoder debouncer so its state is fresh
+    try:
+        macropad.encoder_switch_debounced.update()
+    except Exception:
+        pass    
+    
 # ---------- Setup hardware ----------
 macropad = MacroPad()
 macropad.pixels.fill((50, 0, 0))  # clear pads
@@ -74,6 +87,7 @@ GAMES_REG = [
     ("Simon",         "simon",         "simon",         {}),
     ("Snake",         "snake",         "snake",         {"snake2": False}),
     ("Snake II",      "snake",         "snake",         {"snake2": True}),
+    ("Tempo",         "tempo",         "tempo",         {"tones": tones}),
     ("Three Shells",  "three_shells",  "three_shells",  {}),
     ("Tic Tac Toe",   "tictactoe",     "tictactoe",     {}),
 ]
@@ -284,6 +298,7 @@ while True:
                 title_lbl.text = "Now Playing:"
                 sel = game_names[macropad.encoder % len(game_names)]
                 current_game = start_game_by_name(sel)
+                flush_inputs()  
             else:
                 # Return to menu
                 snap_pre_unload = ram_snapshot()  # NEW
@@ -304,6 +319,7 @@ while True:
                 mode_menu = True
                 title_lbl.text = "Choose your game:"
                 enter_menu()
+                flush_inputs()
                 
     if mode_menu:
         time.sleep(0.01)
@@ -325,3 +341,4 @@ while True:
                         current_game.button_up(key)
             except Exception as e:
                 print("button error:", e)
+    
