@@ -53,17 +53,21 @@ Merlin Guides:
 | Game Name       | Type / Inspiration          | Difficulty | Summary |
 |-----------------|-----------------------------|------------|---------|
 | **Blackjack 13** | Card game (Merlin)          | ★☆☆        | Get as close to 13 without going over; CPU opponent |
-| **Echo**         | Memory / Sequence (Merlin)| ★★☆        | Repeat an increasing sequence of tones and lights |
+| **Echo**         | Memory / Sequence (Merlin)  | ★★☆        | Repeat an increasing sequence of tones and lights |
 | **Hi Lo**        | Guessing (Master Merlin)    | ★☆☆        | Guess the number; LEDs guide you higher or lower |
-| **Hit or Miss**  | Reaction / Timing (Master Merlin)          | ★★☆        | Press keys quickly when LEDs light up — don’t miss |
+| **Hit or Miss**  | Battleshop (Master Merlin)  | ★★☆        | Find the ships and hit them |
+| **Hot Potato**   | Guessing (Master Merlin)    | ★★☆        | Do your best to not guess the number |
 | **Magic Square** | Puzzle (Merlin)             | ★★☆        | Arrange lights into a magic square pattern |
 | **Match It**     | Memory (Master Merlin)      | ★★☆        | Flip keys to find matching pairs |
 | **Mindbender**   | Logic puzzle (Merlin)       | ★★★        | Guess the hidden code with feedback each attempt |
-| **Music Machine**| Free play (Merlin)          | ☆☆☆        | Play tones by pressing keys — like a mini piano |
+| **Music Machine**| Music (Merlin)              | ☆☆☆        | Play tones by pressing keys — like a mini piano |
+| **Music Ladder** | Reaction (Master Merlin)    | ★★☆        | Press all the lit keys and climb the scale |
 | **Pair Off**     | Memory (Master Merlin)      | ★★☆        | Match pairs hidden on the board |
-| **Simon**        | Memory / Sequence (Simon & Merlin)   | ★★☆        | Repeat LED/sound sequences — classic Simon game |
+| **Patterns**     | Memory (Master Merlin)      | ★★☆        | Match the pattern  |
+| **Simon**        | Memory / Sequence (Simon & Merlin)| ★★☆  | Repeat LED/sound sequences — classic Simon game |
 | **Snake**        | Arcade / Nokia-style        | ★★☆        | Eat food, grow the snake, avoid walls and self |
 | **Snake II**     | Arcade / Nokia-style        | ★★★        | Snake with wrap-around and bonus items |
+| **Tempo*         | Music (Master Merlin)       | ☆☆☆        | Play tones by pressing keys — like a sequencer|
 | **Three Shells** | Memory (Master Merlin)      | ★★☆        | Track the ball under shuffled shells |
 | **Tic Tac Toe**  | Board game (Merlin)         | ★☆☆        | Play against CPU; animated endgame pulses |
 
@@ -170,6 +174,7 @@ CPU can win, block, and follow basic strategies. Includes animated endgame pulse
 - patterns.py
 - simon.py
 - snake.py             # Supports two variants - Snake and Snake II
+- tempo.py
 - three_shells.py
 - tictactoe.py
 - my_game.py           # Sample starter template to add your own game
