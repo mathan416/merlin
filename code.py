@@ -15,7 +15,8 @@
 # Controls:
 #   • Rotate encoder to scroll through menu items.
 #   • Press encoder to start the selected game.
-#   • Press encoder during a game to return to the menu.
+#   • Press encoder during a game to return to the menu (most games).
+#   • Tempo opts into a double-press to exit using the encoder.
 #   • Keys 0–11 are passed to the active game’s button handlers.
 #
 # Originally by Keith Tanner
@@ -28,6 +29,11 @@ import terminalio
 import gc, sys
 from adafruit_display_text import label
 from adafruit_macropad import MacroPad
+
+# ---- Encoder handling ----
+ENC_DBL_MS = 600  # encoder double-press window (milliseconds)
+last_enc_down_ms = -1
+enc_exit_armed = False
 
 # ---- RAM debug helpers ----
 def ram_snapshot():
@@ -61,8 +67,8 @@ def flush_inputs():
     try:
         macropad.encoder_switch_debounced.update()
     except Exception:
-        pass    
-    
+        pass
+
 # ---------- Setup hardware ----------
 macropad = MacroPad()
 macropad.pixels.fill((50, 0, 0))  # clear pads
@@ -72,24 +78,25 @@ tones = (196, 220, 247, 262, 294, 330, 349, 392, 440, 494, 523, 587)
 
 # ---------- Lazy-load registry instead of pre-import factories ----------
 GAMES_REG = [
-    ("Blackjack 13",  "blackjack13",   "blackjack13",   {}),
-    ("Echo",          "echo",          "echo",          {}),
-    ("Hit or Miss",   "hit_or_miss",   "hit_or_miss",   {}),
-    ("Hi/Lo",         "hi_lo",         "hi_lo",         {}),
-    ("Hot Potato",    "hot_potato",    "hot_potato",    {}),
-    ("Magic Square",  "magic_square",  "magic_square",  {}),
-    ("Match it",      "match_it",      "match_it",      {}),
-    ("Mindbender",    "mindbender",    "mindbender",    {}),
-    ("Music Machine", "music_machine", "music_machine", {}),
-    ("Musical Ladder", "musical_ladder", "musical_ladder", {}),
-    ("Pair Off",      "pair_off",      "pair_off",      {}),
-    ("Patterns",      "patterns",      "patterns",      {}),
-    ("Simon",         "simon",         "simon",         {}),
-    ("Snake",         "snake",         "snake",         {"snake2": False}),
-    ("Snake II",      "snake",         "snake",         {"snake2": True}),
-    ("Tempo",         "tempo",         "tempo",         {"tones": tones}),
-    ("Three Shells",  "three_shells",  "three_shells",  {}),
-    ("Tic Tac Toe",   "tictactoe",     "tictactoe",     {}),
+    ("Battleship",     "battleship",    "Battleship",    {}),
+    ("Blackjack 13",   "blackjack13",   "blackjack13",   {}),
+    ("Echo",           "echo",          "echo",          {}),
+    ("Hit or Miss",    "hit_or_miss",   "hit_or_miss",   {}),
+    ("Hi/Lo",          "hi_lo",         "hi_lo",         {}),
+    ("Hot Potato",     "hot_potato",    "hot_potato",    {}),
+    ("Magic Square",   "magic_square",  "magic_square",  {}),
+    ("Match it",       "match_it",      "match_it",      {}),
+    ("Mindbender",     "mindbender",    "mindbender",    {}),
+    ("Music Machine",  "music_machine", "music_machine", {}),
+    ("Musical Ladder", "musical_ladder","musical_ladder",{}),
+    ("Pair Off",       "pair_off",      "pair_off",      {}),
+    ("Patterns",       "patterns",      "patterns",      {}),
+    ("Simon",          "simon",         "simon",         {}),
+    ("Snake",          "snake",         "snake",         {"snake2": False}),
+    ("Snake II",       "snake",         "snake",         {"snake2": True}),
+    ("Tempo",          "tempo",         "tempo",         {"tones": tones}),
+    ("Three Shells",   "three_shells",  "three_shells",  {}),
+    ("Tic Tac Toe",    "tictactoe",     "tictactoe",     {}),
 ]
 game_names = [n for (n, _, _, _) in GAMES_REG]
 
@@ -139,6 +146,25 @@ def _purge_game_modules():
     gc.collect()
     ram_report("After purge")
 
+def _release_menu_assets():
+    global menu_group, title_lbl, choice_lbl
+    try:
+        macropad.display.root_group = None
+    except Exception:
+        pass
+    # Drop strong refs so GC can reclaim label glyph bitmaps, etc.
+    menu_group = None
+    title_lbl = None
+    choice_lbl = None
+    gc.collect()
+
+def _rebuild_menu_assets():
+    global menu_group, title_lbl, choice_lbl
+    menu_group, title_lbl, choice_lbl = build_menu_group()
+    # NEW: reflect current selection immediately
+    idx = macropad.encoder % len(game_names)
+    choice_lbl.text = game_names[idx]
+
 # ---------- Menu/Game switching ----------
 def enter_menu():
     try: macropad.pixels.auto_write = True
@@ -160,7 +186,6 @@ def start_game_by_name(name):
     ram_report_delta(snap_before, f"After purge (pre-load {name})")  # NEW
 
     # Lazy import + instantiate
-    # rec = next((r for r in GAMES_REG if r[0] == name), None)  # <-- breaks on CircuitPython
     rec_iter = (r for r in GAMES_REG if r[0] == name)
     try:
         rec = next(rec_iter)
@@ -174,11 +199,14 @@ def start_game_by_name(name):
 
     snap_import = ram_snapshot()  # NEW
 
+    _release_menu_assets()
+    _purge_game_modules()
+    gc.collect()
+
     try:
         mod = __import__(module_name)
     except Exception as e:
         raise ImportError("Failed to import module '{}': {}".format(module_name, e))
-        
     try:
         cls = getattr(mod, class_name)
     except AttributeError as e:
@@ -186,7 +214,7 @@ def start_game_by_name(name):
     ram_report_delta(snap_import, f"Imported module {module_name}")  # NEW
 
     snap_construct = ram_snapshot()  # NEW
-    
+
     # --- BEGIN: KWARG ADAPTERS FOR SPECIAL CASES ---
     # Snake expects 'wraparound', but our registry uses 'snake2'
     if module_name == "snake" and "snake2" in kwargs:
@@ -230,6 +258,30 @@ def start_game_by_name(name):
         macropad.display.root_group = game.group
 
     return game
+
+def _return_to_menu(current_game_ref):
+    """Shared path to cleanly unload the current game and return to the menu."""
+    snap_pre_unload = ram_snapshot()  # NEW
+
+    try:
+        if current_game_ref and hasattr(current_game_ref, "cleanup"):
+            current_game_ref.cleanup()
+    except Exception as e:
+        print("cleanup error:", e)
+    current_game_ref = None
+
+    _purge_game_modules()
+
+    gc.collect()
+    _rebuild_menu_assets()
+    # Ensure last selection is visible right away
+    idx = macropad.encoder % len(game_names)
+    choice_lbl.text = game_names[idx]
+    enter_menu()
+    ram_report_delta(snap_pre_unload, "After unloading game & purge")  # NEW
+    ram_report("Returned to menu")
+
+    return current_game_ref
 
 # ---------- Wipe ----------
 def play_global_wipe(mac):
@@ -284,50 +336,81 @@ while True:
             choice_lbl.text = game_names[idx]
         else:
             if current_game and hasattr(current_game, "encoderChange"):
-                try: current_game.encoderChange(pos, last_encoder_position)
-                except Exception as e: print("encoderChange error:", e)
+                try:
+                    current_game.encoderChange(pos, last_encoder_position)
+                except Exception as e:
+                    print("encoderChange error:", e)
         last_encoder_position = pos
 
     macropad.encoder_switch_debounced.update()
     enc_pressed = macropad.encoder_switch_debounced.pressed
+    now_ms = int(time.monotonic() * 1000)  # milliseconds to match ENC_DBL_MS
     if enc_pressed != last_encoder_switch:
         last_encoder_switch = enc_pressed
-        if enc_pressed:
-            if mode_menu:
-                mode_menu = False
-                title_lbl.text = "Now Playing:"
-                sel = game_names[macropad.encoder % len(game_names)]
-                current_game = start_game_by_name(sel)
-                flush_inputs()  
-            else:
-                # Return to menu
-                snap_pre_unload = ram_snapshot()  # NEW
 
+        if mode_menu and enc_pressed:
+            mode_menu = False
+            title_lbl.text = "Now Playing:"
+            sel = game_names[macropad.encoder % len(game_names)]
+            current_game = start_game_by_name(sel)
+            flush_inputs()
+        elif not mode_menu:
+            # Forward encoder button state to the current game if it wants it
+            if current_game and hasattr(current_game, "encoder_button"):
                 try:
-                    if current_game and hasattr(current_game, "cleanup"):
-                        current_game.cleanup()
+                    current_game.encoder_button(enc_pressed)
                 except Exception as e:
-                    print("cleanup error:", e)
-                current_game = None
+                    print("encoder_button error:", e)
 
-                _purge_game_modules()
+            # Tempo (or any game that opts in) can use double-press to exit
+            if enc_pressed:
+                if getattr(current_game, "supports_double_encoder_exit", False):
+                    if enc_exit_armed and (now_ms - last_enc_down_ms) <= ENC_DBL_MS:
+                        # Second press within window -> exit to menu
+                        current_game = _return_to_menu(current_game)
+                        mode_menu = True
+                        #title_lbl.text = "Choose your game:"
+                        #enter_menu()
+                        flush_inputs()
+                        enc_exit_armed = False
+                    else:
+                        enc_exit_armed = True
+                        last_enc_down_ms = now_ms
+                        if hasattr(current_game, "on_exit_hint"):
+                            try:
+                                current_game.on_exit_hint()
+                            except Exception as e:
+                                print("on_exit_hint error:", e)
+                else:
+                    # Default behavior for games that don't opt-in: single press exits
+                    current_game = _return_to_menu(current_game)
+                    mode_menu = True
+                    title_lbl.text = "Choose your game:"
+                    enter_menu()
+                    flush_inputs()
 
-                gc.collect()
-                ram_report_delta(snap_pre_unload, "After unloading game & purge")  # NEW
-                ram_report("Returned to menu")
+    # Disarm the armed single press after timeout (Tempo only)
+    if (not mode_menu
+        and current_game
+        and getattr(current_game, "supports_double_encoder_exit", False)
+        and enc_exit_armed
+        and (now_ms - last_enc_down_ms) > ENC_DBL_MS):
+        enc_exit_armed = False
+        if hasattr(current_game, "on_exit_hint_clear"):
+            try:
+                current_game.on_exit_hint_clear()
+            except Exception as e:
+                print("on_exit_hint_clear error:", e)
 
-                mode_menu = True
-                title_lbl.text = "Choose your game:"
-                enter_menu()
-                flush_inputs()
-                
     if mode_menu:
         time.sleep(0.01)
         continue
 
     if current_game and hasattr(current_game, "tick"):
-        try: current_game.tick()
-        except Exception as e: print("tick error:", e)
+        try:
+            current_game.tick()
+        except Exception as e:
+            print("tick error:", e)
 
     evt = macropad.keys.events.get()
     if evt:
@@ -341,4 +424,4 @@ while True:
                         current_game.button_up(key)
             except Exception as e:
                 print("button error:", e)
-    
+                
