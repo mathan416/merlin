@@ -1,17 +1,27 @@
-# battleship.py — Battleship for Adafruit MacroPad - 2025-08-15
-# Merlin Launcher–compatible game module
+# battleship.py — Battleship for Adafruit MacroPad
+# -------------------------------------------------
+# Main game logic module for the Battleship adaptation on the Adafruit MacroPad.
+# Designed for the Merlin Launcher framework, exposing the required lifecycle methods:
+#   __init__()      — Initialize game state and resources.
+#   new_game()      — Reset game state and UI for a new match.
+#   tick()          — Per-frame update loop for animations and logic.
+#   button()        — Handle key press events from the MacroPad.
+#   button_up()     — Handle key release events (optional).
+#   encoderChange() — Handle rotary encoder input for in-game navigation.
+#   cleanup()       — Release resources before returning to menu.
 #
-# Exposes class Battleship with methods expected by your launcher:
-#   __init__(macropad, *args, **kwargs)
-#   new_game() — create UI, reset state
-#   tick() — per-frame update
-#   button(key) — handle key press
-#   button_up(key) — handle key release (optional)
-#   encoderChange(pos, last_pos) — handle encoder rotation while in-game
-#   cleanup() — free resources before returning to menu
+# Features:
+# - 10×10 grid rendered on the MacroPad OLED.
+# - Support for movement, ship placement, rotation, and firing.
+# - Personality packs for themed palettes and UI styles.
+# - Debug flag for selective logging during development.
 #
-# OLED renders a 10×10 board; keypad used for movement/confirm/rotate.
-# Personality packs (British Pirate & WWII) included below.
+# Dependencies:
+# - CircuitPython displayio for rendering graphics.
+# - `battleship_personalities.py` for palette/theme definitions.
+#
+# Date: 2025-08-15
+# Author: Iain Bennett (adapted for MacroPad Battleship)
 
 import time
 import gc

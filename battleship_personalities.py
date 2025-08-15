@@ -1,11 +1,71 @@
-# personalities.py — Battleship “personality packs” for Adafruit MacroPad - 2025-08-15
-# CircuitPython 8.x/9.x
-from ulab import numpy as np  # optional if you synthesize tones
+# battleship_personalities.py — Battleship “personality packs” for Adafruit MacroPad
+# -----------------------------------------------------------------------------------
+# Defines color palettes, UI themes, and sound/personality profiles for the Battleship game.
+# A "personality" describes only the presentation layer (colors, labels, sound cues) and 
+# does not affect game rules or mechanics.
+#
+# Contents:
+# - Shared RGB color constants (CircuitPython NeoPixel GRB order).
+# - Multiple theme dictionaries with unique IDs, titles, subtitles, and palette mappings.
+# - Palette entries define background, grid, cursor, ally ships, enemy waters, and hit/miss colors.
+#
+# Creating Your Own Personality:
+# 1. Choose a unique ID:
+#      Example: "retro_terminal"
+#      This will be used internally to reference your personality.
+#
+# 2. Pick a title and subtitle:
+#      These appear on the title screen.
+#      Example:
+#        "title": "RETRO TERMINAL",
+#        "subtitle": "Classic green phosphor"
+#
+# 3. Define a color palette dictionary:
+#      Required keys (all colors are RGB hex values):
+#        "bg"     — Background color for the board area
+#        "grid"   — Grid line color
+#        "cursor" — Cursor highlight
+#        "ally"   — Your ships
+#        "enemy"  — Fog of war / unknown cells
+#        "hit"    — Successful hit
+#        "miss"   — Missed shot
+#        (optional keys: "accent", "sunk", "text" for extra effects)
+#
+# 4. Add it as a dictionary in this file:
+#      Example:
+#        RETRO_TERMINAL = {
+#            "id": "retro_terminal",
+#            "title": "RETRO TERMINAL",
+#            "subtitle": "Classic green phosphor",
+#            "palette": {
+#                "bg": 0x000000,
+#                "grid": 0x00FF00,
+#                "cursor": 0xFFFFFF,
+#                "ally": 0x00FF00,
+#                "enemy": 0x003300,
+#                "hit": 0xFF0000,
+#                "miss": 0x999999
+#            }
+#        }
+#
+# 5. Register it in the PROFILES dictionary:
+#      PROFILES["retro_terminal"] = RETRO_TERMINAL
+#
+# 6. Test in-game:
+#      Launch the game, go to Settings, and select your new personality.
+#
+# Date: 2025-08-15
+# Author: Iain Bennett (adapted for MacroPad Battleship)
 
 # Shared color helpers (RGB hex)
-WHITE=0xFFFFFF; BLACK=0x000000
-RED=0xDD3344; GREEN=0x3CCB5A; BLUE=0x3399FF; GOLD=0xD4AF37; TEAL=0x1BB6A9; GRAY=0x404040
-
+WHITE=0xFFFFFF; 
+BLACK=0x000000
+RED=0xDD3344; 
+GREEN=0x3CCB5A; 
+BLUE=0x3399FF; 
+GOLD=0xD4AF37; 
+TEAL=0x1BB6A9; 
+GRAY=0x404040
 ORANGE = 0xFF8800
 YELLOW = 0xFFD300
 PURPLE = 0x8A2BE2
@@ -15,6 +75,8 @@ CYAN   = 0x00FFFF
 LIME   = 0xBFFF00
 MAGENTA = 0xFF00FF
 DEEP_BLUE = 0x0000FF
+DEEP_RED = 0xFF0000
+DEEP_GREEN = 0x00FF00
 
 
 # A personality describes the *presentation*, not the rules.
@@ -31,10 +93,9 @@ BRIT_PIRATE = {
         "enemy": GRAY,         # unknown waters
         "hit": RED,
         "miss": DEEP_BLUE,
-        "sunk": RED,
+        "sunk": DEEP_RED,
         "text": WHITE,
         "accent": GOLD,
-        "rotate": PINK
     },
     # Ship set (name, length)
     "ships": [
@@ -77,8 +138,9 @@ BRIT_PIRATE = {
     # LED key glow scheme (optional)
     "key_leds": {
         "idle": 0x061018,
-        "confirm": RED,
+        "confirm": DEEP_RED,
         "warn": RED,
+        "rotate": DEEP_BLUE
     }
 }
 
@@ -87,7 +149,7 @@ WW2_NAVAL = {
     "title": "BATTLELINE",
     "subtitle": "Naval Operations",
     "palette": {
-        "bg": 0x00060A, "grid": 0x5DA6F0, "cursor": 0xE0E0E0,
+        "bg": 0x00060A, "grid": 0x5DA6F0, "cursor": DEEP_GREEN,
         "ally": 0x3F78C5, "enemy": 0x243347, "hit": 0xF25C54,
         "miss": 0x0D2030, "sunk": 0xB22222, "text": WHITE, "accent": 0xE0E0E0, "rotate": PINK
     },
@@ -111,7 +173,7 @@ WW2_NAVAL = {
     "taunts_hit":["Direct hit!","Confirm secondary fires.","Well spotted."],
     "taunts_miss":["Adjust fire.","Negative impact.","Recalibrate."],
     "sfx":{"hit":{"type":"shell"}, "miss":{"type":"splash"}, "sunk":{"type":"klaxon"}, "place":{"type":"clack"}, "start":{"type":"trill"} },
-    "key_leds":{"idle":0x04090F,"confirm":0xE0E0E0,"warn":0xB22222}
+    "key_leds":{"idle":0x04090F,"confirm":DEEP_RED,"warn":0xB22222}
 }
 
 PROFILES = {

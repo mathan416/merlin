@@ -1,6 +1,67 @@
-# battleship_ui.py — UI helper for Battleship (Adafruit MacroPad) - 2025-08-15
-# Light on RAM: lazy Label import, minimal title/settings canvas,
-# one-time allocation for 60×60 board layer when needed.
+# battleship.py — Battleship for Adafruit MacroPad
+# -------------------------------------------------
+# Main game logic module for the Battleship adaptation on the Adafruit MacroPad.
+# Designed for the Merlin Launcher framework, exposing the required lifecycle methods:
+#   __init__()      — Initialize game state and resources.
+#   new_game()      — Reset game state and UI for a new match.
+#   tick()          — Per-frame update loop for animations and logic.
+#   button()        — Handle key press events from the MacroPad.
+#   button_up()     — Handle key release events (optional).
+#   encoderChange() — Handle rotary encoder input for in-game navigation.
+#   cleanup()       — Release resources before returning to menu.
+#
+# Features:
+# - 10×10 grid rendered on the MacroPad OLED.
+# - Support for movement, ship placement, rotation, and firing.
+# - Personality packs for themed palettes and UI styles.
+# - Debug flag for selective logging during development.
+#
+# Key Controls by State (MacroPad key index layout):
+# Index layout (0–11), left→right, top→bottom:
+#   [ 0] [ 1] [ 2]
+#   [ 3] [ 4] [ 5]
+#   [ 6] [ 7] [ 8]
+#   [ 9] [10] [11]
+#
+# Navigation cluster:
+#   Up: K1   • Left: K3   • Right: K5   • Down: K7
+#   Center (confirm/place/fire): K4
+#   Rotate: K0 or K2
+#   Back to Title: K9 (from most states)
+#
+# TITLE:
+#   K9  — Toggle 1P / 2P
+#   K10 — Open Settings
+#   K11 — Start Game
+#
+# SETTINGS:
+#   K10 — Back to Title
+#   K11 — Next Setting Field (use encoder to change value)
+#
+# PLACE (Ship Placement):
+#   K1/K3/K5/K7 — Move placement cursor
+#   K0 or K2    — Rotate ghost (horizontal/vertical)
+#   K4          — Place ship
+#   K9          — Back to Title
+#
+# HANDOFF (2P mode visibility swap):
+#   K11 — Continue to PLACE or BATTLE
+#   K9  — Back to Title
+#
+# BATTLE (Firing Phase):
+#   K1/K3/K5/K7 — Move targeting cursor
+#   K4          — Fire at selected cell
+#   K9          — Back to Title
+#
+# RESULTS (Win/Lose Screen):
+#   K9 / K11 / K4 — Return to Title
+#
+# Dependencies:
+# - CircuitPython displayio for rendering graphics.
+# - `battleship_personalities.py` for palette/theme definitions.
+#
+# Date: 2025-08-15
+# Author: Iain Bennett (adapted for MacroPad Battleship)
 
 import time
 import gc
@@ -96,13 +157,15 @@ class UI:
 
     def leds_place(self):
         p = self.profile["palette"]; k = self.profile["key_leds"]
-        self._set_leds({1:p["cursor"],3:p["cursor"],5:p["cursor"],7:p["cursor"],
-                        0:p["accent"],2:p["accent"],4:k["confirm"],9:k["warn"]},
+        self._set_leds({0:p["accent"],2:p["accent"],
+                        1:p["cursor"],3:p["cursor"],5:p["cursor"],7:p["cursor"],
+                        4:k["confirm"],9:k["warn"]},
                        default=k["idle"])
 
     def leds_battle(self):
         p = self.profile["palette"]; k = self.profile["key_leds"]
-        self._set_leds({1:p["cursor"],3:p["cursor"],5:p["cursor"],7:p["cursor"],
+        self._set_leds({0:k["rotate"],2:k["rotate"],
+                        1:p["cursor"],3:p["cursor"],5:p["cursor"],7:p["cursor"],
                         4:k["confirm"],9:k["warn"]},
                        default=k["idle"])
 
@@ -627,12 +690,12 @@ class UI:
                 self._draw_plus_in_cell(self._board_bmp, gx, gy, 2)
             else:
                 self._draw_x_in_cell(self._board_bmp, gx, gy, 2)
-        # elif v == MISS:
-        #    self._fill_cell(self._board_bmp, gx, gy, 0, filled=True)
-        #    self._fill_cell(self._board_bmp, gx, gy, 3, filled=False)
-        #    cx = gx * CELL + 1 + (CELL - 2) // 2
-        #    cy = gy * CELL + 1 + (CELL - 2) // 2
-        #    self._board_bmp[cx, cy] = 3
+        elif v == MISS and DEBUG == True:
+            self._fill_cell(self._board_bmp, gx, gy, 0, filled=True)
+            self._fill_cell(self._board_bmp, gx, gy, 3, filled=False)
+            cx = gx * CELL + 1 + (CELL - 2) // 2
+            cy = gy * CELL + 1 + (CELL - 2) // 2
+            self._board_bmp[cx, cy] = 3
         elif v == SHIP and show_ships:
             self._fill_cell(self._board_bmp, gx, gy, 1, filled=True)
         else:
@@ -707,16 +770,16 @@ class UI:
 
         if cell_enemy == HIT:
             self._draw_x_in_cell(bmp, x, y, 2)
-        #elif cell_enemy == MISS:
-        #    self._fill_cell(bmp, x, y, 3, filled=False)
-        #    cx = x * CELL + 1 + (CELL - 2) // 2
-        #    cy = y * CELL + 1 + (CELL - 2) // 2
-        #    bmp[cx, cy] = 3
+        elif cell_enemy == MISS and DEBUG == True:
+            self._fill_cell(bmp, x, y, 3, filled=False)
+            cx = x * CELL + 1 + (CELL - 2) // 2
+            cy = y * CELL + 1 + (CELL - 2) // 2
+            bmp[cx, cy] = 3
 
         if cell_player == HIT:
             self._draw_plus_in_cell(bmp, x, y, 2)
-        #elif cell_player == MISS:
-        #    self._fill_cell(bmp, x, y, 3, filled=False)
+        elif cell_player == MISS and DEBUG == True:
+            self._fill_cell(bmp, x, y, 3, filled=False)
 
     def overlay_update_cells(self, session, cells):
         for (x, y) in cells:
