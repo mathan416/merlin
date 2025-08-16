@@ -9,74 +9,112 @@
 # - Multiple theme dictionaries with unique IDs, titles, subtitles, and palette mappings.
 # - Palette entries define background, grid, cursor, ally ships, enemy waters, and hit/miss colors.
 #
-# Creating Your Own Personality:
+# -----------------------------------------------------------------------------
+# Creating Your Own Personality
+# -----------------------------------------------------------------------------
+# A personality defines the look, feel, and theming of the game — including
+# colors, ship names, prompts, and key lighting. Follow these steps to create
+# your own.
+#
 # 1. Choose a unique ID:
-#      Example: "retro_terminal"
-#      This will be used internally to reference your personality.
+#      This is used internally to reference your personality.
+#      Example:
+#        "id": "retro_terminal"
 #
 # 2. Pick a title and subtitle:
-#      These appear on the title screen.
+#      These appear on the title screen when the personality is selected.
 #      Example:
 #        "title": "RETRO TERMINAL",
 #        "subtitle": "Classic green phosphor"
 #
 # 3. Define a color palette dictionary:
-#      Required keys (all colors are RGB hex values):
+#      All colors are RGB hex values (0xRRGGBB).
+#      Required keys:
 #        "bg"     — Background color for the board area
 #        "grid"   — Grid line color
-#        "cursor" — Cursor highlight
-#        "ally"   — Your ships
+#        "cursor" — Cursor highlight color
+#        "ally"   — Color of your ships
 #        "enemy"  — Fog of war / unknown cells
-#        "hit"    — Successful hit
-#        "miss"   — Missed shot
-#        (optional keys: "accent", "sunk", "text" for extra effects)
+#        "hit"    — Successful hit indicator
+#        "miss"   — Missed shot indicator
+#        "text"   — Text color (always use WHITE for readability)
+#        "accent" — Accent color for emphasis or hints
+#        "sunk"   — Sunk ship indicators
 #
-# 4. Add it as a dictionary in this file:
+# 4. Define your ships:
+#      Provide exactly 5 tuples: (Ship Name, Length in cells)
+#      You can theme these to your liking. Example using Canadian naval vessels:
+#        ("HMCS Bonaventure", 5),  # Aircraft carrier (Majestic-class; 1957–1970)
+#        ("HMCS Ontario",     4),  # Light cruiser (Minotaur-class; WWII era)
+#        ("HMCS Halifax",     3),  # Halifax-class frigate (modern)
+#        ("HMCS Victoria",    3),  # Victoria-class submarine (modern)
+#        ("HMCS Algonquin",   2)   # Iroquois-class destroyer (modern)
+#
+# 5. Define the strings dictionary:
+#      These are prompts and messages used in-game. Keep them short so they fit
+#      on screen. Example:
+#        "place_prompt": "DEPLOY FLEET",
+#        "fire_prompt":  "TARGET LOCK",
+#        "hit":          "TARGET DESTROYED",
+#        "miss":         "NO CONTACT",
+#        "sunk":         "VESSEL SUNK",
+#        "you_win":      "MISSION COMPLETE",
+#        "you_lose":     "MISSION FAILED",
+#        "p1_turn":      "P1 READY",
+#        "p2_turn":      "P2 READY",
+#        "title_1p":     "SOLO VS. AI",
+#        "title_2p":     "2 PLAYERS: HOTSEAT",
+#        "repeat":       "DUPLICATE COORDINATES"
+#
+# 6. Define key_leds:
+#      Controls the MacroPad key backlight colors for different states:
+#        "idle"    — Default idle glow
+#        "confirm" — Placement or confirmation action
+#        "warn"    — Warnings or invalid actions
+#        "rotate"  — Ship rotation mode (optional)
 #      Example:
-#        RETRO_TERMINAL = {
-#            "id": "retro_terminal",
-#            "title": "RETRO TERMINAL",
-#            "subtitle": "Classic green phosphor",
-#            "palette": {
-#                "bg": 0x000000,
-#                "grid": 0x00FF00,
-#                "cursor": 0xFFFFFF,
-#                "ally": 0x00FF00,
-#                "enemy": 0x003300,
-#                "hit": 0xFF0000,
-#                "miss": 0x999999
-#            }
+#        "key_leds": {
+#            "idle":    0x003300,  # deep green
+#            "confirm": 0x00FF00,  # bright green
+#            "warn":    0xFF0000,  # red
+#            "rotate":  0x00FF55   # lighter green
 #        }
 #
-# 5. Register it in the PROFILES dictionary:
+# 7. Add your personality as a dictionary in this file:
+#      Example:
+#        RETRO_TERMINAL = { ... }
+#
+# 8. Register it in the PROFILES dictionary:
 #      PROFILES["retro_terminal"] = RETRO_TERMINAL
 #
-# 6. Test in-game:
+# 9. Test in-game:
 #      Launch the game, go to Settings, and select your new personality.
+#
+# -----------------------------------------------------------------------------
 #
 # Date: 2025-08-15
 # Author: Iain Bennett (adapted for MacroPad Battleship)
 
 # Shared color helpers (RGB hex)
-WHITE=0xFFFFFF; 
-BLACK=0x000000
-RED=0xDD3344; 
-GREEN=0x3CCB5A; 
-BLUE=0x3399FF; 
-GOLD=0xD4AF37; 
-TEAL=0x1BB6A9; 
-GRAY=0x404040
-ORANGE = 0xFF8800
-YELLOW = 0xFFD300
-PURPLE = 0x8A2BE2
-PINK   = 0xFF69B4
-BROWN  = 0x8B4513
-CYAN   = 0x00FFFF
-LIME   = 0xBFFF00
-MAGENTA = 0xFF00FF
-DEEP_BLUE = 0x0000FF
-DEEP_RED = 0xFF0000
-DEEP_GREEN = 0x00FF00
+WHITE       = 0xFFFFFF; 
+BLACK       = 0x000000
+RED         = 0xDD3344; 
+GREEN       = 0x3CCB5A; 
+BLUE        = 0x3399FF; 
+GOLD        = 0xD4AF37; 
+TEAL        = 0x1BB6A9; 
+GRAY        = 0x404040
+ORANGE      = 0xFF8800
+YELLOW      = 0xFFD300
+PURPLE      = 0x8A2BE2
+PINK        = 0xFF69B4
+BROWN       = 0x8B4513
+CYAN        = 0x00FFFF
+LIME        = 0xBFFF00
+MAGENTA     = 0xFF00FF
+DEEP_BLUE   = 0x0000FF
+DEEP_RED    = 0xFF0000
+DEEP_GREEN  = 0x00FF00
 
 
 # A personality describes the *presentation*, not the rules.
@@ -120,21 +158,6 @@ BRIT_PIRATE = {
         "title_2p":     "2 Players: Hotseat",
         "repeat":       "Stop wasting cannon balls!"
     },
-    # Taunts shown randomly on hits/misses
-    "taunts_hit": [
-        "A tidy broadside!", "Powder well spent!", "Mind the splinters!"
-    ],
-    "taunts_miss": [
-        "Ye wet the waves.", "Sea gull laughs at ye.", "Blame the swell."
-    ],
-    # Sound design tokens the sfx module interprets
-    "sfx": {
-        "hit":   {"type":"cannon", "boom": 220, "crackle": True},
-        "miss":  {"type":"splash", "depth": 0.6},
-        "sunk":  {"type":"bell",   "notes":[523,659,784]},
-        "place": {"type":"rope",   "creak": True},
-        "start": {"type":"fife",   "notes":[784,880,988]},
-    },
     # LED key glow scheme (optional)
     "key_leds": {
         "idle": 0x061018,
@@ -170,21 +193,65 @@ WW2_NAVAL = {
         "title_2p":"2P Hotseat",
         "repeat":"Stop wasting cannon balls!"
     },
-    "taunts_hit":["Direct hit!","Confirm secondary fires.","Well spotted."],
-    "taunts_miss":["Adjust fire.","Negative impact.","Recalibrate."],
-    "sfx":{"hit":{"type":"shell"}, "miss":{"type":"splash"}, "sunk":{"type":"klaxon"}, "place":{"type":"clack"}, "start":{"type":"trill"} },
     "key_leds":{"idle":0x04090F,"confirm":DEEP_RED,"warn":0xB22222}
 }
 
+RETRO_TERMINAL = {
+            "id": "retro_terminal",
+            "title": "RETRO TERMINAL",
+            "subtitle": "Green phosphor",
+            "palette": {
+                "bg": 0x000000,
+                "grid": 0x00FF00,
+                "cursor": 0xFFFFFF,
+                "ally": 0x00FF00,
+                "enemy": 0x003300,
+                "hit": 0xFF0000,
+                "miss": 0x999999,
+                "text": WHITE,
+                "accent": 0x00FF00,  # hints / emphasis
+                "sunk":   0xFF0000   # sunk indicators
+            },
+            "ships": [
+                ("HMCS Bonaventure", 5),  # Aircraft carrier (Majestic-class; served 1957–1970)
+                ("HMCS Ontario",     4),  # Light cruiser (Minotaur-class; WWII era)
+                ("HMCS Halifax",     3),  # Halifax-class frigate (modern)
+                ("HMCS Victoria",    3),  # Victoria-class submarine (modern)
+                ("HMCS Algonquin",   2)   # Iroquois-class destroyer (modern)
+            ],
+            "strings": {
+                "place_prompt": "DEPLOY FLEET",
+                "fire_prompt":  "TARGET LOCK",
+                "hit":          "TARGET DESTROYED",
+                "miss":         "NO CONTACT",
+                "sunk":         "VESSEL SUNK",
+                "you_win":      "MISSION COMPLETE",
+                "you_lose":     "MISSION FAILED",
+                "p1_turn":      "P1 READY",
+                "p2_turn":      "P2 READY",
+                "title_1p":     "SOLO VS. AI",
+                "title_2p":     "2 PLAYERS: HOTSEAT",
+                "repeat":       "DUPLICATE COORDINATES"
+            },
+           "key_leds": {
+                "idle":    0x003300,  # deep green idle glow
+                "confirm": 0x00FF00,  # bright green for confirmation
+                "warn":    0xFF0000,   # red for warnings
+                "rotate":  0x00FF55   # lighter green
+            }
+        }
+
 PROFILES = {
-    BRIT_PIRATE["id"]: BRIT_PIRATE,
-    WW2_NAVAL["id"]: WW2_NAVAL,
+    "brit_pirate": BRIT_PIRATE,
+    "ww2_naval": WW2_NAVAL,
+    "retro_terminal": RETRO_TERMINAL,
 }
 
 # Friendly names for UI
 PROFILE_DISPLAY = {
     "brit_pirate": "British Pirate",
     "ww2_naval": "WW2 Naval",
+    "retro_terminal": "Retro Terminal"
 }
 
 DEFAULT_PROFILE_ID = "brit_pirate"

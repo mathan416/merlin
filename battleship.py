@@ -25,13 +25,7 @@
 
 import time
 import gc
-
-DEBUG = False
-
-def debug_print(*args, **kwargs):
-    """Print only if DEBUG is enabled."""
-    if DEBUG:
-        print(*args, **kwargs)
+from battleship_config import DEBUG, debug_print
         
 ppl = None
 def _load_profiles():
@@ -40,17 +34,6 @@ def _load_profiles():
         import battleship_personalities as _ppl
         ppl = _ppl
 
-
-def _vis(ui):
-    bg   = getattr(ui, "_bg_grid", None)
-    brd  = getattr(ui, "_board_tg", None)
-    cur  = getattr(ui, "_cursor_tg", None)
-    debug_print("VIS grid:",   (bg  is not None and (not bg.hidden)),
-        "board:",      (brd is not None and (not brd.hidden)),
-        "cursor:",     (cur is not None and (not cur.hidden)))
-        
-              
-# from adafruit_display_text import label
 
 # -------------------------- Game constants --------------------------
 GRID_W = 10
@@ -156,15 +139,23 @@ class Board:
         if cell == SHIP:
             self.grid[ii] = HIT
             sidx = self.ship_map[ii]
-            if sidx != 255:
-                ship = self.ships[sidx]
-                ship[1] += 1
+            if sidx == 255:
+                # Fallback so games can still end; also flag it for debugging
+                try:
+                    debug_print("WARN: ship_map=255 at", x, y)
+                except Exception:
+                    pass
                 self.remaining_hits -= 1
-                return "sunk" if ship[1] == ship[0] else "hit"
-            return "hit"
-        else:
-            self.grid[ii] = MISS
-            return "miss"
+                return "hit"
+
+            ship = self.ships[sidx]
+            ship[1] += 1
+            self.remaining_hits -= 1
+            return "sunk" if ship[1] == ship[0] else "hit"
+
+        # MISS
+        self.grid[ii] = MISS
+        return "miss"
 
     def all_sunk(self):
         return self.remaining_hits == 0
@@ -212,23 +203,43 @@ class AI:
         for i in range(100): self._seen[i] = 0
 
     def pick_shot(self, difficulty="Smart"):
+        # 1) Use hunt targets first
         if difficulty == "Smart":
             while self._target_stack:
                 i = self._target_stack.pop()
                 if 0 <= i < 100 and not self._seen[i]:
                     self._seen[i] = 1
                     return self._i_to_xy(i)
-        # random search
+
+        # 2) Parity-constrained search (Smart)
+        if difficulty == "Smart":
+            for _ in range(600):
+                x = self.rng.randint(0, GRID_W - 1)
+                y = self.rng.randint(0, GRID_H - 1)
+                if ((x + y) & 1):   # skip wrong parity
+                    continue
+                i = self._xy_to_i(x, y)
+                if not self._seen[i]:
+                    self._seen[i] = 1
+                    return (x, y)
+
+        # 3) Fallback: no parity (ensures endgame closure)
         for _ in range(600):
-            x = self.rng.randint(0, GRID_W-1)
-            y = self.rng.randint(0, GRID_H-1)
+            x = self.rng.randint(0, GRID_W - 1)
+            y = self.rng.randint(0, GRID_H - 1)
             i = self._xy_to_i(x, y)
-            if difficulty == "Smart" and ((x + y) & 1):  # parity
-                continue
             if not self._seen[i]:
                 self._seen[i] = 1
-                return x, y
-        return 0, 0
+                return (x, y)
+
+        # 4) Final linear scan (should rarely/never hit)
+        for i in range(100):
+            if not self._seen[i]:
+                self._seen[i] = 1
+                return self._i_to_xy(i)
+
+        # Defensive default
+        return (0, 0)
     
     def feed_result(self, x, y, result):
         # Record neighbors to try next when we get a hit/sunk
