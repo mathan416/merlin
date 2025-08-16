@@ -5,7 +5,7 @@
 # does not affect game rules or mechanics.
 #
 # Contents:
-# - Shared RGB color constants (CircuitPython NeoPixel GRB order).
+# - Shared RGB color constants.
 # - Multiple theme dictionaries with unique IDs, titles, subtitles, and palette mappings.
 # - Palette entries define background, grid, cursor, ally ships, enemy waters, and hit/miss colors.
 #
@@ -31,13 +31,13 @@
 #      All colors are RGB hex values (0xRRGGBB).
 #      Required keys:
 #        "bg"     — Background color for the board area
-#        "grid"   — Grid line color
+#        "grid"   — Grid line color - Recommed WHITE/0xFFFFFF
 #        "cursor" — Cursor highlight color
 #        "ally"   — Color of your ships
 #        "enemy"  — Fog of war / unknown cells
 #        "hit"    — Successful hit indicator
 #        "miss"   — Missed shot indicator
-#        "text"   — Text color (always use WHITE for readability)
+#        "text"   — Text color (always use WHITE for readability) - Recommed WHITE/0xFFFFFF
 #        "accent" — Accent color for emphasis or hints
 #        "sunk"   — Sunk ship indicators
 #
@@ -121,44 +121,40 @@ DEEP_GREEN  = 0x00FF00
 BRIT_PIRATE = {
     "id": "brit_pirate",
     "title": "BROADSIDE BRIGANDS",
-    "subtitle": "A bit o’ piracy",
-    # UI palette
+    "subtitle": "A bit o' piracy",
     "palette": {
         "bg": 0x0A0D14,
-        "grid": TEAL,
+        "grid": WHITE,
         "cursor": GREEN,
-        "ally": BLUE,          # your ships
-        "enemy": GRAY,         # unknown waters
+        "ally": BLUE,
+        "enemy": GRAY,
         "hit": RED,
         "miss": DEEP_BLUE,
         "sunk": DEEP_RED,
         "text": WHITE,
         "accent": GOLD,
     },
-    # Ship set (name, length)
     "ships": [
-        ("Flagship ‘Sovereign’", 5),
-        ("Man‑o’‑War", 4),
+        ("Flagship 'Sovereign'", 5),
+        ("Man-o'-War", 4),
         ("Frigate", 3),
         ("Brig", 3),
         ("Sloop", 2),
     ],
-    # Flavor text
     "strings": {
         "place_prompt": "Lay yer fleet, Captain.",
         "fire_prompt":  "Call yer shot!",
-        "hit":          "BULLSEYE Their timbers be shiverin’!",
-        "miss":         "Water and wind. Try again.",
-        "sunk":         "Down she goes! Send em to Davy Jones!",
-        "you_win":      "Victory! Raise the colours!",
-        "you_lose":     "Cursed luck! Strike the colours…",
-        "p1_turn":      "Captain One, make yer mark.",
-        "p2_turn":      "Captain Two, have at em.",
+        "hit":          "BULLSEYE! Shiver 'em!",
+        "miss":         "All water. Again.",
+        "sunk":         "Down she goes!",
+        "you_win":      "Victory! Raise\nthe colors!",
+        "you_lose":     "Cursed luck!\nStrike 'em...",
+        "p1_turn":      "Captain,\nyour mark.",
+        "p2_turn":      "Captain,\nhave at 'em.",
         "title_1p":     "1 Player vs. Navy",
         "title_2p":     "2 Players: Hotseat",
-        "repeat":       "Stop wasting cannon balls!"
+        "repeat":       "Duplicate shot!"
     },
-    # LED key glow scheme (optional)
     "key_leds": {
         "idle": 0x061018,
         "confirm": DEEP_RED,
@@ -172,9 +168,9 @@ WW2_NAVAL = {
     "title": "BATTLELINE",
     "subtitle": "Naval Operations",
     "palette": {
-        "bg": 0x00060A, "grid": 0x5DA6F0, "cursor": DEEP_GREEN,
+        "bg": 0x00060A, "grid": WHITE, "cursor": DEEP_GREEN,
         "ally": 0x3F78C5, "enemy": 0x243347, "hit": 0xF25C54,
-        "miss": 0x0D2030, "sunk": 0xB22222, "text": WHITE, "accent": 0xE0E0E0, "rotate": PINK
+        "miss": 0x0D2030, "sunk": 0xB22222, "text": WHITE, "accent": 0xE0E0E0
     },
     "ships": [
         ("Carrier",5),("Battleship",4),("Cruiser",3),("Submarine",3),("Destroyer",2)
@@ -185,61 +181,53 @@ WW2_NAVAL = {
         "hit":"Target damaged!",
         "miss":"Shot wide.",
         "sunk":"Enemy vessel sunk!",
-        "you_win":"Mission accomplished.",
-        "you_lose":"Mission failed.",
+        "you_win":"Mission\naccomplished.",
+        "you_lose":"Mission\nfailed.",
         "p1_turn":"Player 1 turn.",
         "p2_turn":"Player 2 turn.",
         "title_1p":"1P vs. AI",
         "title_2p":"2P Hotseat",
-        "repeat":"Stop wasting cannon balls!"
+        "repeat":"Duplicate coordinates"
     },
-    "key_leds":{"idle":0x04090F,"confirm":DEEP_RED,"warn":0xB22222}
+    "key_leds":{"idle":0x04090F,"confirm":DEEP_RED,"warn":0xB22222, "rotate":0x6FA8DC}
 }
 
 RETRO_TERMINAL = {
-            "id": "retro_terminal",
-            "title": "RETRO TERMINAL",
-            "subtitle": "Green phosphor",
-            "palette": {
-                "bg": 0x000000,
-                "grid": 0x00FF00,
-                "cursor": 0xFFFFFF,
-                "ally": 0x00FF00,
-                "enemy": 0x003300,
-                "hit": 0xFF0000,
-                "miss": 0x999999,
-                "text": WHITE,
-                "accent": 0x00FF00,  # hints / emphasis
-                "sunk":   0xFF0000   # sunk indicators
-            },
-            "ships": [
-                ("HMCS Bonaventure", 5),  # Aircraft carrier (Majestic-class; served 1957–1970)
-                ("HMCS Ontario",     4),  # Light cruiser (Minotaur-class; WWII era)
-                ("HMCS Halifax",     3),  # Halifax-class frigate (modern)
-                ("HMCS Victoria",    3),  # Victoria-class submarine (modern)
-                ("HMCS Algonquin",   2)   # Iroquois-class destroyer (modern)
-            ],
-            "strings": {
-                "place_prompt": "DEPLOY FLEET",
-                "fire_prompt":  "TARGET LOCK",
-                "hit":          "TARGET DESTROYED",
-                "miss":         "NO CONTACT",
-                "sunk":         "VESSEL SUNK",
-                "you_win":      "MISSION COMPLETE",
-                "you_lose":     "MISSION FAILED",
-                "p1_turn":      "P1 READY",
-                "p2_turn":      "P2 READY",
-                "title_1p":     "SOLO VS. AI",
-                "title_2p":     "2 PLAYERS: HOTSEAT",
-                "repeat":       "DUPLICATE COORDINATES"
-            },
-           "key_leds": {
-                "idle":    0x003300,  # deep green idle glow
-                "confirm": 0x00FF00,  # bright green for confirmation
-                "warn":    0xFF0000,   # red for warnings
-                "rotate":  0x00FF55   # lighter green
-            }
-        }
+    "id": "retro_terminal",
+    "title": "RETRO TERMINAL",
+    "subtitle": "Green phosphor",
+    "palette": {
+        "bg": 0x000000, "grid": WHITE, "cursor": WHITE,
+        "ally": 0x00FF00, "enemy": 0x003300, "hit": 0xFF0000,
+        "miss": 0x999999, "text": WHITE, "accent": 0x00FF00, "sunk": 0xFF0000
+    },
+    "ships": [
+        ("HMCS Bonaventure", 5),
+        ("HMCS Ontario",     4),
+        ("HMCS Halifax",     3),
+        ("HMCS Victoria",    3),
+        ("HMCS Algonquin",   2)
+    ],
+    "strings": {
+        "place_prompt": "DEPLOY FLEET",
+        "fire_prompt":  "TARGET LOCK",
+        "hit":          "TARGET DESTROYED",
+        "miss":         "NO CONTACT",
+        "sunk":         "VESSEL SUNK",
+        "you_win":      "MISSION COMPLETE",
+        "you_lose":     "MISSION FAILED",
+        "win":          "MISSION COMPLETE",
+        "lose":         "MISSION FAILED",
+        "p1_turn":      "P1 READY",
+        "p2_turn":      "P2 READY",
+        "title_1p":     "SOLO VS. AI",
+        "title_2p":     "2 PLAYERS: HOTSEAT",
+        "repeat":       "DUPLICATE COORDINATES"
+    },
+    "key_leds": {
+        "idle": 0x003300, "confirm": 0x00FF00, "warn": 0xFF0000, "rotate": 0x00FF55
+    }
+}
 
 PROFILES = {
     "brit_pirate": BRIT_PIRATE,

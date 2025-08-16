@@ -25,24 +25,21 @@
 
 import time
 import gc
-from battleship_config import DEBUG, debug_print, _vis
+from battleship_config import DEBUG, debug_print, _vis, validate_profiles
         
 ppl = None
+_profiles_validated = False
 def _load_profiles():
     global ppl
     if ppl is None:              # import only once, on demand
         import battleship_personalities as _ppl
         ppl = _ppl
-
+        
 
 # -------------------------- Game constants --------------------------
 GRID_W = 10
 GRID_H = 10
-CELL   = 6  # px
-GRID_PX = CELL * GRID_W  # 60
-# ORIGIN_X = (128 - GRID_PX) # Center
-ORIGIN_X = 128 - GRID_PX - 1 # Right aligned
-ORIGIN_Y = 0
+
 
 # Board cell values
 EMPTY = 0
@@ -50,8 +47,6 @@ SHIP  = 1
 HIT   = 2
 MISS  = 3
 
-# Pause for messages
-MSG_PAUSE = 0.1
 
 # State enum
 TITLE, SETTINGS, PLACE, BATTLE, RESULTS, HANDOFF = range(6)
@@ -264,8 +259,9 @@ class Battleship:
         "boards","to_place","placed_index","current_player","cursor","ghost",
         "_handoff_next","group","_last_ghost_state","_led_flash_until",
         "ui","ai","rng","_settings_items","_settings_index",
-        "_post_win_until",              
-    )
+        "_post_win_until","_cleaned", 
+    )           
+
 
     def __init__(self, macropad, *args, **kwargs):
         self.mac = macropad
@@ -316,6 +312,12 @@ class Battleship:
     def new_game(self):
         self._handoff_next = None
         _load_profiles()
+        
+        global _profiles_validated
+        #if DEBUG and not _profiles_validated:
+        validate_profiles()  
+        _profiles_validated = True
+        
         self.profile = ppl.PROFILES.get(self.profile_id, ppl.PROFILES[ppl.DEFAULT_PROFILE_ID])
         self._ensure_personality_items()
 
@@ -345,41 +347,77 @@ class Battleship:
 
     # Clean up before returning to menu
     def cleanup(self):
-        # Avoid double cleanup
+        """Tear down UI/resources before returning to the launcher menu."""
         if getattr(self, "_cleaned", False):
             return
         self._cleaned = True
 
+        ui = getattr(self, "ui", None)
+        disp = getattr(self.mac, "display", None)
+
+        # 1) Let the UI detach itself if it knows how.
         try:
-            # Remove UI group from display to free layers
-            if getattr(self, "ui", None) and getattr(self.ui, "group", None):
+            detach = getattr(ui, "detach", None)
+            if callable(detach):
+                detach()
+        except Exception:
+            pass
+
+        # 2) Make sure our group is no longer shown on the display.
+        try:
+            grp = getattr(ui, "group", None)
+            if disp:
                 try:
-                    if self.ui.group in self.mac.display.root_group:
-                        self.mac.display.root_group.remove(self.ui.group)
+                    # If our group is shown as the root, clear it.
+                    if getattr(disp, "root_group", None) is grp:
+                        try:
+                            # CP 9+: assign None
+                            disp.root_group = None
+                        except Exception:
+                            # Older CP: show(None)
+                            try:
+                                disp.show(None)
+                            except Exception:
+                                pass
+                    else:
+                        # If root is a Group and contains ours, remove it.
+                        root = getattr(disp, "root_group", None)
+                        if root and grp and hasattr(root, "remove"):
+                            try:
+                                if grp in root:
+                                    root.remove(grp)
+                            except Exception:
+                                pass
                 except Exception:
                     pass
+        except Exception:
+            pass
 
-            try:
-                spk = getattr(self.mac, "speaker", None)
-                if spk is not None:
-                    spk.enable = False
-            except Exception:
-                pass
+        # 3) Disable speaker to avoid stray tones.
+        try:
+            spk = getattr(self.mac, "speaker", None)
+            if spk is not None:
+                spk.enable = False
+        except Exception:
+            pass
 
-            # Clear out UI object
+        # 4) Drop strong refs to large objects so GC can reclaim memory.
+        try:
             self.ui = None
+            self.group = None
+            # Optional: clear model refs if you won't resume the session
+            # self.boards = None
+            # self.ai = None
+            # self.rng = None
+        except Exception:
+            pass
 
-            # Clear any game/session data that might hold references
-            #self.session = None
-
-            # Force garbage collection
+        # 5) Collect garbage (twice is common on CP to help fragmentation).
+        try:
             gc.collect()
-        except Exception as e:
-            debug_print("Cleanup error:", e)
-            try:
-                gc.collect()
-            except Exception:
-                pass
+            gc.collect()
+        except Exception:
+            pass
             
     # --- SFX helpers (super lightweight, no samples) ---
     def _beep(self, freq, dur=0.08):
@@ -520,61 +558,71 @@ class Battleship:
         else:
             self.ui.draw_settings(self._settings_items, self._settings_index, self)
 
-    # Key handling (launcher sends presses only)
+        # Key handling (launcher sends presses only)
     def button(self, key):
+        # ---------- TITLE ----------
         if self.state == TITLE:
             if key == 9:       # K9: toggle 1P/2P
                 self.mode_2p = not self.mode_2p
                 self.ui.set_title_mode(self.mode_2p)
                 self.ui.leds_title(self.mode_2p)
-                self._beep(520, 0.05)  # confirm chirp
+                self._beep(520, 0.05)
             elif key == 10:    # K10: open Settings
-                self._beep(520, 0.05)  # menu tick
+                self._beep(520, 0.05)
                 self._goto_settings()
             elif key == 11:    # K11: start
-                self._beep(520, 0.05)  # menu tick
+                self._beep(520, 0.05)
                 self._start_new_game()
+            return
 
-        elif self.state == SETTINGS:
+        # ---------- SETTINGS ----------
+        if self.state == SETTINGS:
             if key == 10:  # back to title
-                self._beep(260, 0.05)  # exit cue
+                self._beep(260, 0.05)
                 self._enter_title()
             elif key == 11:  # next setting field
-                self._beep(520, 0.03)  # next-field tick
+                self._beep(520, 0.03)
                 self._next_item()
                 if self._settings_items[self._settings_index][0] == "Mode":
-                    self.ui.clear()
+                    self.ui.clear()  # you intentionally clear when toggling mode
                 self.ui.draw_settings(self._settings_items, self._settings_index, self)
                 self.ui.leds_settings()
+            return
 
-        elif self.state == PLACE:
-            if key in (1, 3, 5, 7):  # move ghost
+        # ---------- PLACE ----------
+        if self.state == PLACE:
+            if key in (1, 3, 5, 7):  # move ghost (up,left,right,down)
                 dx = 1 if key == 5 else -1 if key == 3 else 0
                 dy = 1 if key == 7 else -1 if key == 1 else 0
-                self._beep(520, 0.02)  # movement tick
+                self._beep(520, 0.02)
                 self.ui.move_cursor(self, dx, dy)
-                
+
                 length = self.to_place[self.placed_index][1] if self.placed_index < len(self.to_place) else 1
-                horiz = self.ghost.get("horiz", True)
-                board = self.boards[self.current_player]
-                ok = board.can_place(self.cursor[0], self.cursor[1], length, horiz)
+                horiz  = self.ghost.get("horiz", True)
+                board  = self.boards[self.current_player]
+                ok     = board.can_place(self.cursor[0], self.cursor[1], length, horiz)
                 self.ui.redraw_ghost(self, ok=ok)
 
             elif key in (0, 2):  # rotate ghost
-                self._beep(440, 0.03)  # rotate tick
+                self._beep(440, 0.03)
                 self.ui.rotate_ghost(self)
                 length = self.to_place[self.placed_index][1] if self.placed_index < len(self.to_place) else 1
-                board = self.boards[self.current_player]
-                ok = board.can_place(self.cursor[0], self.cursor[1], length, self.ghost.get("horiz", True))
+                board  = self.boards[self.current_player]
+                ok     = board.can_place(self.cursor[0], self.cursor[1], length, self.ghost.get("horiz", True))
                 self.ui.redraw_ghost(self, ok=ok)
 
             elif key == 4:  # place ship
-                _, length = self.to_place[self.placed_index] if self.placed_index < len(self.to_place) else ("", 1)
-                x0, y0 = self.cursor
-                horiz = self.ghost.get("horiz", True)
-                board = self.boards[self.current_player]
+                # safe reads
+                if self.placed_index < len(self.to_place):
+                    _, length = self.to_place[self.placed_index]
+                else:
+                    length = 1
+                x0, y0   = self.cursor
+                horiz    = self.ghost.get("horiz", True)
+                board    = self.boards[self.current_player]
+
                 if board.can_place(x0, y0, length, horiz):
-                    self._beep(1200, 0.05)  # placement chirp
+                    self._beep(1200, 0.05)
                     board.place(x0, y0, length, horiz)
                     self.ui.repaint_ship_segment_range(self, self.current_player, x0, y0, length, horiz, show_ships=True)
                     try:
@@ -589,86 +637,81 @@ class Battleship:
                     else:
                         if self.mode_2p:
                             if self.current_player == 0:
+                                # Handoff to Player 2 placement
                                 self.current_player = 1
-                                self.placed_index = 0
-                                self.cursor = [0, 0]
-                                self.ghost = {"length": self.to_place[0][1], "horiz": True}
+                                self.placed_index   = 0
+                                self.cursor         = [0, 0]
+                                self.ghost          = {"length": self.to_place[0][1], "horiz": True}
                                 self._last_ghost_state = None
                                 self.ui._set_game_layers_visible(grid=False, board=False, cursor=False)
                                 _vis(self.ui)
                                 self.ui.next_player_screen(2)
-                                self.ui.leds_title()
-                                self._beep(880, 0.06)  # handoff cue
-                                self._handoff_next = "PLACE"
-                                self.state = HANDOFF
+                                self.ui.leds_handoff()
+                                self._beep(880, 0.06)
+                                self._handoff_next = PLACE
+                                self.state         = HANDOFF
                                 return
                             else:
+                                # Player 2 done, go to battle
                                 self._beep_seq([(660,0.05),(880,0.05),(1100,0.1)], gap=0.02)
                                 self._begin_battle()
                         else:
+                            # 1P done, go to battle
                             self._beep_seq([(660,0.05),(880,0.05),(1100,0.1)], gap=0.02)
                             self._begin_battle()
                 else:
-                    self._beep(220, 0.08)  # invalid placement
+                    self._beep(220, 0.08)
                     self.ui.redraw_ghost(self, ok=False)
 
-            if key == 9:
+            if key == 9:  # exit to title
                 self._enter_title()
-                return
+            return
 
-        elif self.state == BATTLE:
+        # ---------- BATTLE ----------
+        if self.state == BATTLE:
             if key in (1, 3, 5, 7):  # move targeting cursor
                 dx = 1 if key == 5 else -1 if key == 3 else 0
                 dy = 1 if key == 7 else -1 if key == 1 else 0
-                self._beep(520, 0.02)  # targeting tick
+                self._beep(520, 0.02)
                 self.ui.move_cursor(self, dx, dy)
-               
+                return
 
-            elif key == 4:  # fire
+            if key == 4:  # fire
                 shooter = self.current_player
                 target  = 1 - shooter
                 x, y    = self.cursor
 
-                # Your shot hits the model first
+                # Model update
                 result = self.boards[target].fire(x, y)
                 debug_print("enemy_cell_after_fire:", self.boards[target].grid[y*GRID_W + x])
                 debug_print(result, x, y)
 
-                # Make sure layers exist/are visible (cheap, idempotent)
+                # Ensure layers visible
                 self.ui._ensure_game_layers()
                 self.ui._set_game_layers_visible(grid=True, board=True, cursor=True)
                 _vis(self.ui)
 
-                # Paint just the changed cell and push to display immediately
+                # Paint impacted cell
                 self.ui.overlay_update_cells(self, [(x, y)])
-                debug_print("self.ui.overlay_update_cells board_visible:", not self.ui._board_tg.hidden)
-                debug_print("self.ui.overlay_update_cells bmp_center_idx:", self.ui._peek_center_index(x, y))
-                debug_print("PAL:", int(self.ui._board_pal[0]), int(self.ui._board_pal[1]),
-                            int(self.ui._board_pal[2]), int(self.ui._board_pal[3]))
-                debug_print("transparent0?", getattr(self.ui._board_pal, "transparent_index", None))
 
-                # Debug: draw a big white square and flush, then read center
-                if DEBUG==True:
+                if DEBUG:
                     self.ui._fill_cell(self.ui._board_bmp, 0, 0, 2, filled=True)
                     self.ui._flush()
-                    debug_print("center_after_flush:", self.ui._peek_center_index(x, y))  # <-- added here
+                    debug_print("center_after_flush:", self.ui._peek_center_index(x, y))
 
-                # Redraw full overlay (repaints the whole board)
-                self.ui.draw_battle_overlay(self)
-                if DEBUG==True:
-                    debug_print("self.ui.draw_battle_overlay board_visible:", not self.ui._board_tg.hidden)
-                    debug_print("self.ui.draw_battle_overlay bmp_center_idx:", self.ui._peek_center_index(x, y))
-                    self.ui.debug_visible_ships(self, 0, tag="[BATTLE after AI shot on player]")
-                    self.ui.debug_visible_ships(self, 1, tag="[BATTLE after AI shot (enemy check)]")
-                
-                # Sounds, text prompt, and temporary LED color (may sleep ~0.25s)
+                # (Optional full overlay refresh; keep under DEBUG to avoid extra work)
+                if DEBUG:
+                    self.ui.draw_battle_overlay(self)
+                    self.ui.debug_visible_ships(self, 0, tag="[BATTLE after player shot]")
+                    self.ui.debug_visible_ships(self, 1, tag="[BATTLE after player shot (enemy check)]")
+
+                # Sounds + message
                 self.ui.on_shot(result, tag=("P1" if shooter == 0 else ("P2" if self.mode_2p else "CPU")))
 
-                # Keep D-pad LEDs hot briefly; tick() will restore after expiry
-                self._led_flash_until = max(getattr(self, "_led_flash_until", 0.0),
-                                            time.monotonic() + 0.5)
+                # LED flash window
+                self._led_flash_until = max(getattr(self, "_led_flash_until", 0.0), time.monotonic() + 0.5)
 
-                # Victory after your shot?
+                # Victory after player's shot?
                 if self.boards[target].all_sunk():
                     self._beep_seq([(660,0.06),(880,0.06),(1175,0.12)], gap=0.03)
                     self.ui.draw_results(winner=(shooter == 0))
@@ -678,80 +721,63 @@ class Battleship:
                     return
 
                 if self.mode_2p:
-                    # Hand off to the other human
-                    self.current_player = 1 - self.current_player
+                    # Handoff to the other human
+                    self.current_player = target
                     self.ui.next_player_screen(self.current_player + 1)
-                    self._beep(880, 0.06)  # handoff cue
-                    self._handoff_next = "BATTLE"
+                    self._beep(880, 0.06)
+                    self._handoff_next = BATTLE
                     self.state = HANDOFF
                     return
-                else:
-                    # --- 1P: AI replies immediately ---
-                    ax, ay = self.ai.pick_shot(self.difficulty)
-                    ar     = self.boards[0].fire(ax, ay)
-                    debug_print("ally_cell_after_ai:", self.boards[0].grid[ay*GRID_W + ax])
-                    debug_print(ar, ax, ay)
-                    
-                    # Ensure layers (no-op if already set) and paint AI’s cell
-                    self.ui._ensure_game_layers()
-                    self.ui._set_game_layers_visible(grid=True, board=True, cursor=True)
-                    _vis(self.ui)
-                    self.ui.overlay_update_cells(self, [(ax, ay)])
-                    debug_print("ai self.ui.overlay_update_cells board_visible:", not self.ui._board_tg.hidden)
-                    debug_print("ai self.ui.overlay_update_cells bmp_center_idx:", self.ui._peek_center_index(ax, ay))
-                    debug_print("PAL:", int(self.ui._board_pal[0]), int(self.ui._board_pal[1]),
-                                int(self.ui._board_pal[2]), int(self.ui._board_pal[3]))
-                    debug_print("transparent0?", getattr(self.ui._board_pal, "transparent_index", None))
 
-                    # Debug: draw a big white square and flush, then read center
-                    if DEBUG==True:
-                        self.ui._fill_cell(self.ui._board_bmp, 0, 0, 2, filled=True)
-                        self.ui._flush()
-                        debug_print("center_after_flush(AI):", self.ui._peek_center_index(ax, ay))
+                # --- 1P: AI replies immediately ---
+                ax, ay = self.ai.pick_shot(self.difficulty)
+                ar     = self.boards[0].fire(ax, ay)
+                debug_print("ally_cell_after_ai:", self.boards[0].grid[ay*GRID_W + ax])
+                debug_print(ar, ax, ay)
 
-                    # Redraw full overlay
+                self.ui._ensure_game_layers()
+                self.ui._set_game_layers_visible(grid=True, board=True, cursor=True)
+                _vis(self.ui)
+                self.ui.overlay_update_cells(self, [(ax, ay)])
+
+                if DEBUG:
+                    self.ui._fill_cell(self.ui._board_bmp, 0, 0, 2, filled=True)
+                    self.ui._flush()
+                    debug_print("center_after_flush(AI):", self.ui._peek_center_index(ax, ay))
                     self.ui.draw_battle_overlay(self)
-                    debug_print("ai self.ui.draw_battle_overlay board_visible:", not self.ui._board_tg.hidden)
-                    debug_print("ai self.ui.draw_battle_overlay bmp_center_idx:", self.ui._peek_center_index(ax, ay))
 
-                    # Sounds + message for AI shot
-                    if   ar == "hit":    self._beep(750, 0.09)
-                    elif ar == "sunk":   self._beep_seq([(600,0.06),(820,0.06),(1050,0.12)], gap=0.02)
-                    elif ar == "miss":   self._beep(320, 0.06)
-                    elif ar == "repeat": self._beep(240, 0.05)
+                # Sounds + message for AI shot
+                if   ar == "hit":    self._beep(750, 0.09)
+                elif ar == "sunk":   self._beep_seq([(600,0.06),(820,0.06),(1050,0.12)], gap=0.02)
+                elif ar == "miss":   self._beep(320, 0.06)
+                elif ar == "repeat": self._beep(240, 0.05)
 
-                    self.ui.on_shot(ar, tag="CPU")
+                self.ui.on_shot(ar, tag="CPU")
+                self._led_flash_until = max(getattr(self, "_led_flash_until", 0.0), time.monotonic() + 0.5)
 
-                    # Extend LED flash for AI’s turn
-                    self._led_flash_until = max(getattr(self, "_led_flash_until", 0.0),
-                                                time.monotonic() + 0.5)
+                if hasattr(self.ai, "feed_result"):
+                    try:
+                        self.ai.feed_result(ax, ay, ar)
+                    except Exception:
+                        pass
 
-                    # Feed hunt stack
-                    if hasattr(self.ai, "feed_result"):
-                        try:
-                            self.ai.feed_result(ax, ay, ar)
-                        except Exception:
-                            pass
-
-                    # Did the AI win?
-                    if self.boards[0].all_sunk():
-                        self._beep_seq([(880,0.06),(660,0.06),(494,0.12)], gap=0.03)
-                        self.ui.draw_results(winner=False)
-                        self.ui.leds_results()
-                        self._post_win_until = time.monotonic() + 2.0
-                        self.state = RESULTS
-                        return
-                    else:
-                        self.ui.draw_battle_overlay(self)
-
+                # AI victory?
+                if self.boards[0].all_sunk():
+                    self._beep_seq([(880,0.06),(660,0.06),(494,0.12)], gap=0.03)
+                    self.ui.draw_results(winner=False)
+                    self.ui.leds_results()
+                    self._post_win_until = time.monotonic() + 2.0
+                    self.state = RESULTS
+                    return
             if key == 9:
                 self._enter_title()
-                return
+            return
 
-        elif self.state == HANDOFF:
-            if key == 11:
+        # ---------- HANDOFF ----------
+        if self.state == HANDOFF:
+            if key == 11:  # continue
                 self.ui.clear()
-                if self._handoff_next == "PLACE":
+                if self._handoff_next == PLACE:
                     self.ui.draw_place(self)
                     self.ui.leds_place()
                     self.state = PLACE
@@ -761,11 +787,13 @@ class Battleship:
                     self.state = BATTLE
             elif key == 9:
                 self._enter_title()
+            return
 
-        elif self.state == RESULTS:
+        # ---------- RESULTS ----------
+        if self.state == RESULTS:
             if key in (9, 11, 4):
                 self._enter_title()
-
+            return
     # ---------------- internal helpers ----------------
     def _enter_title(self):
         gc.collect()
@@ -789,6 +817,12 @@ class Battleship:
         gc.collect()
         self._settings_index = 0
         self._ensure_personality_items()
+        if DEBUG:
+            try:
+                validate_profiles(ppl.PROFILES)
+            except Exception as e:
+                debug_print("validate_profiles error:", e)
+                
         # (Optional) enforce valid profile again, then sync UI profile
         if self.profile_id not in ppl.PROFILES and self._settings_items[2][1]:
             self.profile_id = self._settings_items[2][1][0]
@@ -812,7 +846,7 @@ class Battleship:
     def _start_new_game(self):
         gc.collect()
         _load_profiles()
-
+        
         # Lock in personality for this round
         self.profile = ppl.PROFILES.get(self.profile_id, ppl.PROFILES[ppl.DEFAULT_PROFILE_ID])
         
@@ -902,16 +936,24 @@ class Battleship:
             _load_profiles()
             self.profile_id = value
             self.profile = ppl.PROFILES.get(self.profile_id, ppl.PROFILES[ppl.DEFAULT_PROFILE_ID])
-            self.ui.profile = self.profile
 
-            # Rebuild UI layers for the new palette
-            # self.ui.refresh_palette()
+            if self.ui:
+                # Sync the UI with the new profile
+                self.ui.profile = self.profile
 
-            # IMPORTANT: while not in gameplay, keep game layers hidden so the grid
-            # doesn't flash during Settings/Title redraws.
-            if self.state not in (PLACE, BATTLE):
-                self.ui._set_game_layers_visible(grid=False, board=False, cursor=False)
-                _vis(self.ui)
-
+                # If we're actively in gameplay, a live retint is fine.
+                # Otherwise, keep game layers hidden to avoid flashing during Settings/Title.
+                if self.state in (PLACE, BATTLE):
+                    try:
+                        self.ui.refresh_palette()
+                    except Exception:
+                        pass
+                else:
+                    try:
+                        self.ui._set_game_layers_visible(grid=False, board=False, cursor=False)
+                        _vis(self.ui)
+                    except Exception:
+                        pass
+                    
         elif name == "SFX":
             self.sfx_enabled = (value == "on")

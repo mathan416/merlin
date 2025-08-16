@@ -74,6 +74,8 @@ GRID_W = 10
 GRID_H = 10
 CELL   = 6
 GRID_PX = CELL * GRID_W
+GRID_OFFSET_X = 0
+GRID_OFFSET_Y = 0   # if you want to adjust vertically too later
 ORIGIN_X = 128 - GRID_PX - 1   # right aligned
 ORIGIN_Y = 0
 
@@ -119,8 +121,13 @@ class UI:
         # Lazy cache for Label class
         self._Label = None
 
+        self.grid_off_x = GRID_OFFSET_X
+        self.grid_off_y = GRID_OFFSET_Y
+        self.apply_offsets()
+
         # LED cache
         self._init_leds()
+        self.clear()
 
     # ---------- LED helpers ----------
     def _init_leds(self):
@@ -216,74 +223,97 @@ class UI:
         Label = self._get_Label()
         p = self.profile["palette"]
 
-        # Static BG + grid
+        # ---------- Static BG + grid ----------
         static_pal = displayio.Palette(2)
         static_pal[0] = p["bg"]
         static_pal[1] = p["grid"]
+
         bg = displayio.Bitmap(GRID_PX, GRID_PX, 2)
-        # Fill bg
-        for y in range(GRID_PX):
-            for x in range(GRID_PX):
-                bg[x, y] = 0
-        # Grid lines
-        for i in range(GRID_W + 1):
+
+        # Fill bg (index 0)
+        bitmaptools.fill_region(bg, 0, 0, GRID_PX, GRID_PX, 0)
+
+        # Outer border (all four sides) at index 1
+        for yy in range(GRID_PX):
+            bg[0, yy] = 1                          # left
+            bg[GRID_PX - 1, yy] = 1                # right
+        for xx in range(GRID_PX):
+            bg[xx, 0] = 1                          # top
+            bg[xx, GRID_PX - 1] = 1                # bottom
+
+        # Interior vertical grid lines (skip edges)
+        for i in range(1, GRID_W):
             x = i * CELL
             for yy in range(GRID_PX):
-                if 0 <= x < GRID_PX:
-                    bg[x, yy] = 1
-        for j in range(GRID_H + 1):
+                bg[x, yy] = 1
+
+        # Interior horizontal grid lines (skip edges)
+        for j in range(1, GRID_H):
             y = j * CELL
             for xx in range(GRID_PX):
-                if 0 <= y < GRID_PX:
-                    bg[xx, y] = 1
+                bg[xx, y] = 1
 
-        self._bg_grid = displayio.TileGrid(bg, pixel_shader=static_pal, x=ORIGIN_X, y=ORIGIN_Y)
+        # Place BG grid tilegrid with offsets
+        self._bg_grid = displayio.TileGrid(
+            bg, pixel_shader=static_pal,
+            x=ORIGIN_X + self.grid_off_x, y=ORIGIN_Y + self.grid_off_y
+        )
         self._bg_grid.hidden = True
         self.group.append(self._bg_grid)
 
-        # Board layer (transparent idx 0)
+        # ---------- Board layer (transparent idx 0) ----------
         self._board_pal = displayio.Palette(4)
         self._board_pal.make_transparent(0)
-        self._board_pal[1] = 0xFFFFFF
-        self._board_pal[2] = 0xFFFFFF
-        self._board_pal[3] = 0xFFFFFF
+        # Board indices are forced white for mono OLED
+        self._board_pal[1] = 0xFFFFFF  # ship fill / ghost outline
+        self._board_pal[2] = 0xFFFFFF  # hit mark
+        self._board_pal[3] = 0xFFFFFF  # miss mark / outlines
 
         self._board_bmp = displayio.Bitmap(GRID_PX, GRID_PX, 4)
         self._clear_bitmap(self._board_bmp, 0)
-        self._board_tg = displayio.TileGrid(self._board_bmp, pixel_shader=self._board_pal,
-                                            x=ORIGIN_X, y=ORIGIN_Y)
+
+        self._board_tg = displayio.TileGrid(
+            self._board_bmp, pixel_shader=self._board_pal,
+            x=ORIGIN_X + self.grid_off_x, y=ORIGIN_Y + self.grid_off_y
+        )
         self._board_tg.hidden = True
         self.group.append(self._board_tg)
 
-        # Cursor outline (transparent bg)
+        # ---------- Cursor outline (transparent bg) ----------
         cur_pal = displayio.Palette(2)
         cur_pal.make_transparent(0)
         cur_pal[1] = p["cursor"]
+
         cur_bmp = displayio.Bitmap(CELL, CELL, 2)
         for xx in range(CELL):
             cur_bmp[xx, 0] = 1
-            cur_bmp[xx, CELL-1] = 1
+            cur_bmp[xx, CELL - 1] = 1
         for yy in range(CELL):
             cur_bmp[0, yy] = 1
-            cur_bmp[CELL-1, yy] = 1
-        self._cursor_tg = displayio.TileGrid(cur_bmp, pixel_shader=cur_pal, x=ORIGIN_X, y=ORIGIN_Y)
+            cur_bmp[CELL - 1, yy] = 1
+
+        self._cursor_tg = displayio.TileGrid(
+            cur_bmp, pixel_shader=cur_pal,
+            x=ORIGIN_X + self.grid_off_x, y=ORIGIN_Y + self.grid_off_y
+        )
         self._cursor_tg.hidden = True
         self.group.append(self._cursor_tg)
 
-        # Prompt label (left column)
+        # ---------- Prompt label (left column) ----------
         self._prompt_lbl = Label(terminalio.FONT, text="", color=p["text"], scale=1)
         self._prompt_lbl.anchor_point = (0.0, 0.0)
         self._prompt_lbl.anchored_position = (self._prompt_left_margin, 2)
         self.group.append(self._prompt_lbl)
 
-        # Compute left column width beside grid
+        # Compute left column width beside the (shifted) grid
         try:
             glyph_w = terminalio.FONT.get_bounding_box()[0] or 6
         except Exception:
             glyph_w = 6
-        col_px = max(0, ORIGIN_X - self._prompt_left_margin)
+        col_px = max(0, (ORIGIN_X + self.grid_off_x) - self._prompt_left_margin)
         self._prompt_max_chars = max(1, col_px // glyph_w)
 
+        self._prompt_last_text = None
         gc.collect()
 
     # Public: used by the game code before drawing gameplay screens
@@ -349,13 +379,11 @@ class UI:
     def _fill_cell(self, bmp, gx, gy, color_idx, filled=True):
         px = gx * CELL + 1
         py = gy * CELL + 1
-        w = CELL - 2
-        h = CELL - 2
+        w = CELL - 1
+        h = CELL - 1
         if filled:
-            # Fast C-level fill instead of nested loops
-            bitmaptools.fill_region(bmp, px, py, px + w, py + h, color_idx)
+            bitmaptools.fill_region(bmp, px, py, px + w, py + h, color_idx)  # end-exclusive
         else:
-            # Borders still need manual draw
             for xx in range(w):
                 bmp[px + xx, py] = color_idx
                 bmp[px + xx, py + h - 1] = color_idx
@@ -608,9 +636,17 @@ class UI:
     def ensure_attached(self):
         try:
             disp = getattr(self.mac, "display", None)
-            root = getattr(disp, "root_group", None)
-            if root is not None and (self.group not in root):
-                root.append(self.group)
+            if not disp:
+                return
+            try:
+                disp.show(self.group)
+            except Exception:
+                try:
+                    disp.root_group = self.group
+                except Exception:
+                    root = getattr(disp, "root_group", None)
+                    if root and (self.group not in root):
+                        root.append(self.group)
         except Exception:
             pass
 
@@ -647,6 +683,7 @@ class UI:
                         seen_as_2 += 1
                     elif idx == 3:
                         seen_as_3 += 1
+        debug_print(f"[debug_visible_ships {tag}] total={total} seen_ship_fill={seen_as_1} seen_hit={seen_as_2} seen_miss={seen_as_3} leaks={leak_centers}")
 
     def draw_battle_overlay(self, session):
         # Ensure layers exist and are visible
@@ -664,8 +701,8 @@ class UI:
 
         # Position the cursor sprite (cheap — just moving a TileGrid)
         cx, cy = session.cursor
-        self._cursor_tg.x = ORIGIN_X + cx * CELL
-        self._cursor_tg.y = ORIGIN_Y + cy * CELL
+        self._cursor_tg.x = ORIGIN_X + self.grid_off_x + cx * CELL
+        self._cursor_tg.y = ORIGIN_Y + self.grid_off_y + cy * CELL
 
         # Prompt (avoid churn if unchanged; draw_prompt already caches)
         strings = self.profile.get("strings", {})
@@ -712,10 +749,13 @@ class UI:
 
     def move_cursor(self, session, dx, dy):
         x, y = session.cursor
-        session.cursor = [max(0, min(GRID_W - 1, x + dx)), max(0, min(GRID_H - 1, y + dy))]
+        session.cursor = [
+            max(0, min(GRID_W - 1, x + dx)),
+            max(0, min(GRID_H - 1, y + dy))
+        ]
         cx, cy = session.cursor
-        self._cursor_tg.x = ORIGIN_X + cx * CELL
-        self._cursor_tg.y = ORIGIN_Y + cy * CELL
+        self._cursor_tg.x = ORIGIN_X + self.grid_off_x + cx * CELL
+        self._cursor_tg.y = ORIGIN_Y + self.grid_off_y + cy * CELL
 
     # ----- Ghost helpers -----
     def _ghost_cells(self, session, length, horiz, gx, gy):
@@ -792,3 +832,13 @@ class UI:
         px = gx * CELL + 1 + (CELL - 2) // 2
         py = gy * CELL + 1 + (CELL - 2) // 2
         return int(self._board_bmp[px, py])
+    
+    def apply_offsets(self, session=None):
+        offx = ORIGIN_X + self.grid_off_x
+        offy = ORIGIN_Y + self.grid_off_y
+        if self._bg_grid:   self._bg_grid.x = offx; self._bg_grid.y = offy
+        if self._board_tg:  self._board_tg.x = offx; self._board_tg.y = offy
+        if self._cursor_tg and session:
+            cx, cy = session.cursor
+            self._cursor_tg.x = offx + cx * CELL
+            self._cursor_tg.y = offy + cy * CELL
