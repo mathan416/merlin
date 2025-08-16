@@ -67,7 +67,7 @@ import time
 import gc
 import displayio, terminalio
 import bitmaptools
-from battleship_config import DEBUG, debug_print
+from battleship_config import DEBUG, debug_print, _vis
 
 # Grid constants (must match battleship.py)
 GRID_W = 10

@@ -25,7 +25,7 @@
 
 import time
 import gc
-from battleship_config import DEBUG, debug_print
+from battleship_config import DEBUG, debug_print, _vis
         
 ppl = None
 def _load_profiles():
