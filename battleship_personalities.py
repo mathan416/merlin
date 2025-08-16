@@ -4,6 +4,11 @@
 # A "personality" describes only the presentation layer (colors, labels, sound cues) and 
 # does not affect game rules or mechanics.
 #
+# License:
+#   Released under the CC0 1.0 Universal (Public Domain Dedication).
+#   You can copy, modify, distribute, and perform the work, even for commercial purposes,
+#   all without asking permission. Attribution is appreciated but not required.
+#
 # Contents:
 # - Shared RGB color constants.
 # - Multiple theme dictionaries with unique IDs, titles, subtitles, and palette mappings.

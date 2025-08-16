@@ -10,6 +10,11 @@
 #   encoderChange() — Handle rotary encoder input for in-game navigation.
 #   cleanup()       — Release resources before returning to menu.
 #
+# License:
+#   Released under the CC0 1.0 Universal (Public Domain Dedication).
+#   You can copy, modify, distribute, and perform the work, even for commercial purposes,
+#   all without asking permission. Attribution is appreciated but not required.
+#
 # Features:
 # - 10×10 grid rendered on the MacroPad OLED.
 # - Support for movement, ship placement, rotation, and firing.

@@ -3,6 +3,11 @@
 # Written by Iain Bennett — 2025
 # Inspired by Keith Tanner's Merlin for the Macropad
 #
+# License:
+#   Released under the CC0 1.0 Universal (Public Domain Dedication).
+#   You can copy, modify, distribute, and perform the work, even for commercial purposes,
+#   all without asking permission. Attribution is appreciated but not required.
+#
 # Hit or Miss is a Master Merlin-style memory and deduction game where the
 # player tries to find hidden shapes on a 3×3 grid. Two levels are available:
 #

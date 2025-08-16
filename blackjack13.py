@@ -3,6 +3,11 @@
 # Written by Iain Bennett — 2025
 # Inspired by Keith Tanner's Merlin for the Macropad
 #
+# License:
+#   Released under the CC0 1.0 Universal (Public Domain Dedication).
+#   You can copy, modify, distribute, and perform the work, even for commercial purposes,
+#   all without asking permission. Attribution is appreciated but not required.
+#
 # Blackjack 13 is a fast-paced, simplified variant of Blackjack where the goal
 # is to get as close to 13 as possible without going over.
 # 

@@ -5,6 +5,11 @@
 # for the Battleship game. It is imported by battleship.py, battleship_ui.py,
 # and other modules so that global settings can be maintained in one place.
 #
+# License:
+#   Released under the CC0 1.0 Universal (Public Domain Dedication).
+#   You can copy, modify, distribute, and perform the work, even for commercial purposes,
+#   all without asking permission. Attribution is appreciated but not required.
+#
 # Purpose:
 #   - Keep global values consistent across files
 #   - Provide a single switch for debugging output

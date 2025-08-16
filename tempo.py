@@ -1,7 +1,12 @@
 # tempo.py — “TEMPO” (1‑Player) for Adafruit MacroPad
 # CircuitPython 8.x / 9.x
-#
+# Written by Iain Bennett — 2025
 # Inspired by the original Master Merlin “Tempo” game.
+#
+# License:
+#   Released under the CC0 1.0 Universal (Public Domain Dedication).
+#   You can copy, modify, distribute, and perform the work, even for commercial purposes,
+#   all without asking permission. Attribution is appreciated but not required.
 #
 # Gameplay summary
 # ----------------

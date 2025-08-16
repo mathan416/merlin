@@ -2,6 +2,11 @@
 # Written by Iain Bennett — 2025
 # Inspired by Keith Tanner's Merlin for the Macropad
 #
+# License:
+#   Released under the CC0 1.0 Universal (Public Domain Dedication).
+#   You can copy, modify, distribute, and perform the work, even for commercial purposes,
+#   all without asking permission. Attribution is appreciated but not required.
+#
 # "Three Shells" is a digital version of the classic shell game, adapted for the MacroPad.
 # The ball is hidden under one of three shells (K3, K4, K5). After shuffling, the player
 # must guess where the ball is. The shuffling speed and number of swaps are determined by

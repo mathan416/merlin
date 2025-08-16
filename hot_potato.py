@@ -3,10 +3,10 @@
 # Written by Iain Bennett — 2025
 # Inspired by Keith Tanner's Merlin for the Macropad
 #
-# hot_potato.py — Master Merlin "Hot Potato" for Adafruit MacroPad
-# CircuitPython 8.x / 9.x compatible, non-blocking animations
-# Written by Iain Bennett — 2025
-# Inspired by Keith Tanner's Merlin for the Macropad
+# License:
+#   Released under the CC0 1.0 Universal (Public Domain Dedication).
+#   You can copy, modify, distribute, and perform the work, even for commercial purposes,
+#   all without asking permission. Attribution is appreciated but not required.
 #
 # Hot Potato is a party guessing game: there’s a secret number (0–99). Players
 # take turns guessing; Merlin shows HI or LO after each guess. Whoever guesses

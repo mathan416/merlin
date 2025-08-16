@@ -3,6 +3,11 @@
 # Written by Iain Bennett — 2025
 # Inspired by Keith Tanner's Merlin for the Macropad
 #
+# License:
+#   Released under the CC0 1.0 Universal (Public Domain Dedication).
+#   You can copy, modify, distribute, and perform the work, even for commercial purposes,
+#   all without asking permission. Attribution is appreciated but not required.
+#
 # "Snake" and "Snake II" are classic arcade-style games where you guide a growing
 # snake around the keypad, eating food and avoiding collisions with walls or yourself.
 # This implementation supports both Snake I (basic) and Snake II (with wrap-around

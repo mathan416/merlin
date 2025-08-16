@@ -1,7 +1,36 @@
 # patterns.py — Master Merlin "Patterns" for Adafruit MacroPad
 # CircuitPython 8.x / 9.x, non-blocking LEDs/animation
 # Written by Iain Bennett — 2025
-
+#
+# 🎮 GAMEPLAY
+# ─────────────────────────────────────────────────────────────
+# ░ Classic Merlin “Patterns” re-imagined on a 3×3 MacroPad grid.
+# ░ The device streams a sequence of LED grids — one is the target pattern.
+# ░ In 1-Player mode, stop the stream when the MATCH appears.
+# ░ In 2-Player mode, buzz in first to claim the match — fastest wins!
+# ░ Higher levels add rotations, extra cells, and blinking blue tricksters.
+# ░ First to 4 points in 2P mode wins the crown 👑.
+#
+# 🌈 VISUALS
+# ─────────────────────────────────────────────────────────────
+# ░ Red = solid target cells
+# ░ Blue = blinking cells (level 4+)
+# ░ White = UI hints & prompts
+# ░ Green = score “pips” (2P mode)
+#
+# 🎵 AUDIO
+# ─────────────────────────────────────────────────────────────
+# ░ Quick arpeggios for wins (660–880–990 Hz).
+# ░ Low “buzz” for wrong answers (196 Hz / 150 Hz).
+# ░ Echoes the feel of handheld electronic games + Amiga demo flair.
+#
+# 📜 LICENSE
+# ─────────────────────────────────────────────────────────────
+# Released under the CC0 1.0 Universal (Public Domain Dedication).
+# Copy, modify, distribute, and perform freely — no permissions needed.
+# Attribution is appreciated but not required.
+#
+# ─────────────────────────────────────────────────────────────
 import time, math, random
 import displayio, terminalio
 from adafruit_display_text import label

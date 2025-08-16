@@ -3,6 +3,11 @@
 # Written by Iain Bennett — 2025
 # Inspired by Keith Tanner's Merlin for the Macropad
 #
+# License:
+#   Released under the CC0 1.0 Universal (Public Domain Dedication).
+#   You can copy, modify, distribute, and perform the work, even for commercial purposes,
+#   all without asking permission. Attribution is appreciated but not required.
+#
 # "Match It" is a Merlin-style memory game played entirely on the 3×3 key grid
 # (K0..K8), where players flip two tiles at a time to find matching symbols.
 # Each symbol is represented by a distinct LED color and a short sound motif.

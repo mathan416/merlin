@@ -1,10 +1,30 @@
-# musical_ladder.py — MUSICAL LADDER for Adafruit MacroPad (CircuitPython 8.x/9.x)
-# Class: musical_ladder
+# 🎼 MUSICAL LADDER — for Adafruit MacroPad (CircuitPython 8.x / 9.x)
 #
-# Goal: Turn out each flashed group of LEDs before the time window closes to climb
-# the scale (do→re→…→top do). Miss the window and you drop (never below bottom do).
-# Reach top do to WIN; if a drop reaches bottom do, you LOSE.
-
+# HOW TO PLAY
+# ─────────────────────────────────────────────────────────────────────────────
+# ░ Climb the Solfège Scale: DO → RE → MI → FA → SO → LA → TI → DO
+# ░ Each “step” is a group of flashing LEDs. Strike them *all* in time!
+# ░ Windows shrink as skill increases — Merlin-style 1…9 difficulty levels.
+# ░ If you succeed, you ascend one rung up the ladder toward the TOP DO.
+# ░ Miss the window? You slip down, but never below the first DO.
+# ░ Reach the top and you WIN with a triumphant scale & LED flourish!
+# ░ Fail at the bottom and you LOSE with a sour crash and red fade.
+#
+# THE VIBE
+# ─────────────────────────────────────────────────────────────────────────────
+# ░ A game of reflex and rhythm, where memory meets music.
+# ░ Every press is rewarded with a note of the scale and solfège lyric,
+#   making your climb *sing* as you play.
+# ░ It feels like an Amiga demoscene tune fused with “Simon” & “Merlin.”
+# ░ LED gradients pulse, tones climb, and victory feels earned.
+#
+# License:
+#   Released under the CC0 1.0 Universal (Public Domain Dedication).
+#   You can copy, modify, distribute, and perform the work, even for commercial
+#   purposes, all without asking permission. Attribution is appreciated but not
+#   required.
+#
+# ─────────────────────────────────────────────────────────────────────────────
 import time
 from random import randint
 

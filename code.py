@@ -80,6 +80,7 @@ tones = (196, 220, 247, 262, 294, 330, 349, 392, 440, 494, 523, 587)
 GAMES_REG = [
     ("Battleship",     "battleship",    "Battleship",    {}),
     ("Blackjack 13",   "blackjack13",   "blackjack13",   {}),
+    ("90s Demo Scene", "demoscene",     "demoscene",     {}),
     ("Echo",           "echo",          "echo",          {}),
     ("Hit or Miss",    "hit_or_miss",   "hit_or_miss",   {}),
     ("Hi/Lo",          "hi_lo",         "hi_lo",         {}),
