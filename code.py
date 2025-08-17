@@ -57,22 +57,31 @@ def ram_report_delta(before, label=""):
     return (a_free, a_alloc)
 
 def _aggressive_free_before_import():
-    # Detach any groups and blank the screen to free display buffers.
+    # Only detach/refresh if a group is attached; if already frozen (root_group=None),
+    # don't refresh or you'll push a blank frame over the frozen logo.
     try:
-        macropad.display.root_group = None
+        if macropad.display.root_group is not None:
+            try:
+                macropad.display.root_group = None
+            except Exception:
+                pass
+            try:
+                macropad.display.refresh(minimum_frames_per_second=0)
+            except Exception:
+                try:
+                    macropad.display.refresh()
+                except Exception:
+                    pass
     except Exception:
         pass
-    try:
-        macropad.display.refresh(minimum_frames_per_second=0)
-    except Exception:
-        try: macropad.display.refresh()
-        except Exception: pass
+
     # LEDs off (free pixel buffers if any drivers allocate)
     try:
         macropad.pixels.fill((0, 0, 0))
         macropad.pixels.show()
     except Exception:
         pass
+
     # Double GC tends to help fragmentation on CP
     gc.collect(); gc.collect()
     
@@ -190,8 +199,12 @@ def _release_menu_assets(detach=False):
     gc.collect()
 
 def _return_to_menu(current_game_ref):
+    # Ensure display resumes normal updates even if a game left it off
+    try:
+        macropad.display.auto_refresh = True
+    except Exception:
+        pass
     snap_pre_unload = ram_snapshot()  # existing
-
     # 0) Failsafe: stop any tone the game left running
     try:
         if hasattr(macropad, "stop_tone"):
@@ -248,6 +261,25 @@ def _rebuild_menu_assets():
     menu_group, title_lbl, choice_lbl = build_menu_group()
     choice_lbl.text = game_names[last_menu_idx]
 
+def _freeze_display_frame():
+    try:
+        macropad.display.auto_refresh = False
+    except Exception:
+        pass
+    # Push the current frame once
+    try:
+        macropad.display.refresh(minimum_frames_per_second=0)
+    except Exception:
+        try:
+            macropad.display.refresh()
+        except Exception:
+            pass
+    # Detach the root group so its objects can be GC'd
+    try:
+        macropad.display.root_group = None
+    except Exception:
+        pass
+    
 # ---------- Menu/Game switching ----------
 def enter_menu():
     try: macropad.pixels.auto_write = True
@@ -255,19 +287,35 @@ def enter_menu():
     macropad.pixels.brightness = 0.30
     macropad.pixels.fill((50, 0, 0))
     macropad.display.root_group = menu_group
+    # nudge the screen once (safe on CP 8/9)
+    try:
+        macropad.display.refresh(minimum_frames_per_second=0)
+    except Exception:
+        try: macropad.display.refresh()
+        except Exception: pass
 
 def start_game_by_name(name):
     global last_menu_idx 
-    #last_menu_idx = macropad.encoder % len(game_names)
     snap_before = ram_report(f"Before loading {name}")
 
+    # Update menu UI so it reads "Now Playing" and selected game
     macropad.pixels.fill((0, 0, 0))
     if name not in SKIP_WIPE:
-        play_global_wipe(macropad)
+        play_global_wipe(macropad)  # LEDs only — display still shows menu/logo
 
+    # Make the title say "Now Playing:" and the chosen game (already done in your loop)
+    # We want that frame visible during load, so freeze it:
+    _freeze_display_frame()
+
+    # Now that the pixels are frozen, we can drop the menu objects from RAM
+    _release_menu_assets(detach=False)  # we already detached in _freeze_display_frame()
+
+    # Maximize contiguous heap before import/construct/new_game
+    _aggressive_free_before_import()
     _purge_game_modules()
     ram_report_delta(snap_before, f"After purge (pre-load {name})")
 
+    # --- (unchanged) find registry / import module ---
     rec_iter = (r for r in GAMES_REG if r[0] == name)
     try:
         rec = next(rec_iter)
@@ -279,43 +327,28 @@ def start_game_by_name(name):
     kwargs = dict(kwargs)
 
     snap_import = ram_snapshot()
-
-    _release_menu_assets(detach=False)
-    _purge_game_modules()
     gc.collect()
-
     try:
         mod = __import__(module_name)
     except MemoryError:
         _aggressive_free_before_import()
-        try:
-            mod = __import__(module_name)
-        except Exception as e2:
-            raise ImportError("Failed to import module '{}': {}".format(module_name, e2))
-    except Exception as e:
-        raise ImportError("Failed to import module '{}': {}".format(module_name, e))
-
-    try:
-        cls = getattr(mod, class_name)
-    except AttributeError as e:
-        raise ImportError("Module '{}' has no class '{}'".format(module_name, class_name))
+        mod = __import__(module_name)
     ram_report_delta(snap_import, f"Imported module {module_name}")
 
+    # --- construct (same as before) ---
     snap_construct = ram_snapshot()
-
-    # --- special case adapters ---
+    cls = getattr(mod, class_name)
     if module_name == "snake" and "snake2" in kwargs:
         kwargs = {"wraparound": bool(kwargs["snake2"])}
-
-    # --- robust constructor attempts ---
     game = None
     ctor_err = None
+    gc.collect()
     for attempt in (
-        lambda: cls(macropad, tones, **kwargs),  # most common
-        lambda: cls(macropad, **kwargs),         # some games
-        lambda: cls(macropad, tones),            # legacy two-arg
-        lambda: cls(macropad),                   # oldest style
-        lambda: cls(),                           # no-arg fallback (e.g. tictactoe)
+        lambda: cls(macropad, tones, **kwargs),
+        lambda: cls(macropad, **kwargs),
+        lambda: cls(macropad, tones),
+        lambda: cls(macropad),
+        lambda: cls(),
     ):
         try:
             game = attempt()
@@ -324,18 +357,23 @@ def start_game_by_name(name):
             ctor_err = e
         except Exception as e:
             ctor_err = e
-
     if game is None:
-        raise TypeError(
-            f"Couldn't construct game {class_name}. Last error: {ctor_err}"
-        )
+        raise TypeError(f"Couldn't construct game {class_name}. Last error: {ctor_err}")
 
     ram_report_delta(snap_construct, f"Constructed {class_name}")
+
+    # One more GC right before the game allocates its UI in new_game()
     gc.collect()
     ram_report_delta(snap_before, f"Total delta after loading {name}")
 
+    # Let the game build its UI (bitmaps/labels etc.)
     game.new_game()
 
+    # Hand off control: re-enable auto_refresh and show the game group
+    try:
+        macropad.display.auto_refresh = True
+    except Exception:
+        pass
     if hasattr(game, "group") and game.group is not None:
         macropad.display.root_group = game.group
 

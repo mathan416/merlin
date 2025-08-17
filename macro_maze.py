@@ -15,7 +15,7 @@ except Exception:
 
 # ---------- Tunables ----------
 SCREEN_W, SCREEN_H = const(128), const(64)
-RAYS = const(64)                              # 2 px columns across 128 px
+RAYS = const(56)                              # 2 px columns across 128 px
 FOV = math.radians(60)
 MOVE_SPEED = 0.12
 TURN_SPEED = math.radians(10)
@@ -98,10 +98,21 @@ def _draw_vert_slice(bitmap, x, h, shaded=False):
             y += 2
     else:
         # --- CHECKER MODE ---
+        #y_end = top + h
+        #for y in range(top, y_end):
+        #    if ((x >> 1) + y) & 1:
+        #        _safe_fill(bitmap, x, y, 2, 1, WALL_COLOR)
+                
+        y = top + (((x >> 1) + top) & 1)  # pick the first row that should be "on"
         y_end = top + h
-        for y in range(top, y_end):
-            if ((x >> 1) + y) & 1:
-                _safe_fill(bitmap, x, y, 2, 1, WALL_COLOR)
+        while y < y_end:
+            _safe_fill(bitmap, x, y, 2, 1, WALL_COLOR)
+            y += 2
+
+def _norm_angle(a):
+    while a <= -math.pi: a += 2*math.pi
+    while a >   math.pi: a -= 2*math.pi
+    return a
 
 def _safe_load_json(path, default):
     try:
@@ -255,7 +266,11 @@ class _Raycaster:
         self.rays = rays
         self.fov = fov
         self.offs = [((i + 0.5)/rays - 0.5) * fov for i in range(rays)]
-        
+        self._off_cos = [math.cos(a) for a in self.offs]
+        self._off_sin = [math.sin(a) for a in self.offs]
+        self._last_top = [0] * rays
+        self._last_h = [0] * rays
+        self._last_shaded = [2] * rays  # 2 = unknown, forces first-frame draw
 
     def set_maze(self, maze):
         self.maze = maze
@@ -263,14 +278,34 @@ class _Raycaster:
         self.w = len(maze[0])
 
     def draw(self, px, py, ang):
-        _clear(self.bitmap)
-        for i, aoff in enumerate(self.offs):
-            ra = ang + aoff
-            rx, ry = math.cos(ra), math.sin(ra)
+        # Incremental update: no full-screen clear—only touch changed columns
 
-            mapX, mapY = int(px), int(py)
-            dX = 1e9 if rx == 0 else abs(1.0 / rx)
-            dY = 1e9 if ry == 0 else abs(1.0 / ry)
+        cosA = math.cos(ang)
+        sinA = math.sin(ang)
+
+        offc = self._off_cos   # cos(offset)
+        offs = self._off_sin   # sin(offset)
+        maze = self.maze
+        w = self.w
+        h = self.h
+        bm = self.bitmap
+        rays = self.rays
+
+        inv_eps = 1e-6
+        max_steps = (w + h) * 2  # cap DDA steps by maze size
+
+        last_top = self._last_top
+        last_h   = self._last_h
+        last_sh  = self._last_shaded
+
+        for i in range(rays):
+            # Rotate precomputed offset by camera angle
+            rx = cosA * offc[i] - sinA * offs[i]
+            ry = sinA * offc[i] + cosA * offs[i]
+
+            mapX = int(px); mapY = int(py)
+            dX = abs(1.0 / (rx if abs(rx) > inv_eps else inv_eps))
+            dY = abs(1.0 / (ry if abs(ry) > inv_eps else inv_eps))
 
             if rx < 0:
                 stepX = -1; sideX = (px - mapX) * dX
@@ -281,37 +316,54 @@ class _Raycaster:
             else:
                 stepY =  1; sideY = (mapY + 1.0 - py) * dY
 
-            hit, side = False, 0
-            for _ in range(128):
+            hit = False; side = 0
+            for _ in range(max_steps):
                 if sideX < sideY:
                     sideX += dX; mapX += stepX; side = 0
                 else:
                     sideY += dY; mapY += stepY; side = 1
-                if mapX < 0 or mapX >= self.w or mapY < 0 or mapY >= self.h:
+                if mapX < 0 or mapX >= w or mapY < 0 or mapY >= h:
                     hit = True; break
-                if self.maze[mapY][mapX] == 1:
+                if maze[mapY][mapX] == 1:
                     hit = True; break
 
             if not hit:
-                dist = 999.0
+                perp = 999.0
             else:
                 if side == 0:
-                    dist = (mapX - px + (1 - stepX)*0.5) / (rx if rx else 1e-6)
+                    dist = (mapX - px + (1 - stepX)*0.5) / (rx if abs(rx) > inv_eps else inv_eps)
                 else:
-                    dist = (mapY - py + (1 - stepY)*0.5) / (ry if ry else 1e-6)
+                    dist = (mapY - py + (1 - stepY)*0.5) / (ry if abs(ry) > inv_eps else inv_eps)
                 if dist == 0:
-                    dist = 1e-3
-                dist = abs(dist)
+                    dist = inv_eps
+                perp = abs(dist) * offc[i]  # perpendicular correction via cos(offset)
 
-            # Perpendicular distance correction (remove fisheye)
-            perp = dist * math.cos(aoff)
             if perp < 1e-3:
                 perp = 1e-3
 
-            slice_h = int(SCREEN_H / perp)
+            new_h = int(SCREEN_H / perp)
+            if new_h < 1: new_h = 1
+            if new_h > SCREEN_H: new_h = SCREEN_H
+            new_top = (SCREEN_H - new_h) // 2
+            shaded = 1 if (hit and side == 1) else 0
 
-            # shaded only if we actually hit and the wall was a Y-side
-            _draw_vert_slice(self.bitmap, i*2, slice_h, shaded=(hit and side == 1))
+            # Skip if this column is identical to the last frame
+            if new_top == last_top[i] and new_h == last_h[i] and shaded == last_sh[i]:
+                continue
+
+            # Erase previous slice for this column (if any)
+            prev_h = last_h[i]
+            if prev_h > 0:
+                prev_top = last_top[i]
+                _safe_fill(bm, i*2, prev_top, 2, prev_h, BG_COLOR)
+
+            # Draw the new slice
+            _draw_vert_slice(bm, i*2, new_h, shaded=bool(shaded))
+
+            # Save state for next frame
+            last_h[i]   = new_h
+            last_top[i] = new_top
+            last_sh[i]  = shaded
 
 # ---------- Core (event-driven, no blocking loop) ----------
 class _MacroMazeCore:
@@ -794,6 +846,8 @@ class _MacroMazeCore:
             self.cam_a -= rot; moved = True
         if K_RIGHT in prs:
             self.cam_a += rot; moved = True
+            
+        self.cam_a = _norm_angle(self.cam_a)
 
         if moved:
             self.last_pose = None
@@ -891,9 +945,13 @@ class _MacroMazeCore:
             elif key == K_DOWN:
                 self._try_move(-math.cos(self.cam_a)*tap_lin, -math.sin(self.cam_a)*tap_lin); self.last_pose=None
             elif key == K_LEFT:
-                self.cam_a -= tap_rot; self.last_pose=None; self._tone(520, 0.015)
+                self.cam_a -= tap_rot; 
+                self.cam_a = _norm_angle(self.cam_a)
+                self.last_pose=None; self._tone(520, 0.015)
             elif key == K_RIGHT:
-                self.cam_a += tap_rot; self.last_pose=None; self._tone(520, 0.015)
+                self.cam_a += tap_rot; 
+                self.cam_a = _norm_angle(self.cam_a)
+                self.last_pose=None; self._tone(520, 0.015)
             elif key == K_MINIMAP:
                 self.show_minimap = not self.show_minimap
                 self.last_pose = None

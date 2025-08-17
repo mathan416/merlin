@@ -327,7 +327,7 @@ class Battleship:
         self._ensure_personality_items()
 
         self.boards = [Board(), Board()]
-        self.to_place = self.profile["ships"][:]
+        self.to_place = self.profile["ships"]
         self.placed_index = 0
         self.current_player = 0
         self.cursor = [0, 0]
@@ -337,6 +337,7 @@ class Battleship:
 
         # Lazy import UI here, when we’re about to use it
         if self.ui is None:
+            gc.collect()
             from battleship_ui import UI
             self.ui = UI(self.mac, self.profile)
         else:
@@ -897,6 +898,7 @@ class Battleship:
             self.profile_id = self._settings_items[2][1][0]
 
         if self.ui is None:
+            gc.collect()
             from battleship_ui import UI
             self.ui = UI(self.mac, self.profile)
             self.group = self.ui.group
@@ -932,6 +934,7 @@ class Battleship:
 
         # Lazy-create UI (first run) or just retint existing UI
         if self.ui is None:
+            gc.collect()
             from battleship_ui import UI
             self.ui = UI(self.mac, self.profile)
             self.group = self.ui.group
@@ -943,7 +946,7 @@ class Battleship:
 
         # Fresh boards and placement
         self.boards = [Board(), Board()]
-        self.to_place = self.profile["ships"][:]
+        self.to_place = self.profile["ships"]
         self.placed_index = 0
         self.current_player = 0
         self.cursor = [0, 0]
