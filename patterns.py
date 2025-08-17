@@ -82,6 +82,11 @@ class patterns:
 
         self._build_display()
         self._to_mode_select()
+        try:
+            self.mac.display.auto_refresh = True
+            self.mac.display.refresh(minimum_frames_per_second=0)
+        except Exception:
+            pass
 
     # ---------- Debug helpers ----------
     def _dbg(self, *args):
@@ -140,6 +145,7 @@ class patterns:
 
         # HUD text cache (two lines)
         self._t_cache = ("","")
+        self.group = g
 
     def _set_hud(self, l1=None, l2=None):
         old_l1, old_l2 = self._t_cache
@@ -154,37 +160,77 @@ class patterns:
         self._to_mode_select()
 
     def cleanup(self):
-        # Stop all game logic and make tick() a no-op
-        self.mode = "idle"          # not handled by tick(), so nothing renders
+        # Make safe to call multiple times
+        if getattr(self, "_cleaned", False):
+            return
+        self._cleaned = True
+
+        # Stop game logic
+        self.mode = "idle"
         self._stopped = True
         self._in_gap = False
         self.stream_idx = -1
         self._gap_until = 0.0
         self._show_until = 0.0
 
-        # LEDs: force-clear immediately (bypass frame throttle)
+        # Stop any tone
+        try:
+            if hasattr(self.mac, "stop_tone"):
+                self.mac.stop_tone()
+        except Exception:
+            pass
+
+        # LEDs: off and restore auto_write
         try:
             self.mac.pixels.fill(0x000000)
             self.mac.pixels.show()
+            try: self.mac.pixels.auto_write = True
+            except Exception: pass
         except Exception:
             pass
-        # Hand control back to the launcher
+
+        # Display: if our group is on-screen, detach it; don't allocate a new group
         try:
-            self.mac.pixels.auto_write = True
-        except AttributeError:
+            disp = self.mac.display
+            # Disable auto_refresh briefly to avoid flicker during detach
+            try: disp.auto_refresh = False
+            except Exception: pass
+
+            root = getattr(disp, "root_group", None)
+            if root is self.group:
+                try:
+                    disp.root_group = None          # CP 9.x style
+                except Exception:
+                    try:
+                        disp.show(None)             # CP 8.x fallback
+                    except Exception:
+                        pass
+
+            # Clear our label text (optional)
+            try:
+                if hasattr(self, "line1"): self.line1.text = ""
+                if hasattr(self, "line2"): self.line2.text = ""
+            except Exception:
+                pass
+
+            # Restore auto_refresh so the launcher can draw immediately
+            try: disp.auto_refresh = True
+            except Exception: pass
+        except Exception:
             pass
 
-        # Display: clear HUD and detach our group so the launcher can draw
+        # Drop heavy references so GC can reclaim RAM
         try:
-            if hasattr(self, "line1"): self.line1.text = ""
-            if hasattr(self, "line2"): self.line2.text = ""
-            empty = displayio.Group()
-            try:
-                # CircuitPython 8.x
-                self.mac.display.show(empty)
-            except AttributeError:
-                # CircuitPython 9.x
-                self.mac.display.root_group = empty
+            self.group = None
+            self.line1 = None
+            self.line2 = None
+        except Exception:
+            pass
+
+        # Encourage collection
+        try:
+            import gc
+            gc.collect()
         except Exception:
             pass
 
