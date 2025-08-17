@@ -254,8 +254,8 @@ class musical_ladder:
         # Simple ascending ticks: 660 Hz, 770 Hz, 880 Hz
         ticks = {3: 660, 2: 770, 1: 880}
         for n in range(START_PAUSE, 0, -1):
-            self._set_top(f"Starting in {n}")
-            self._set_bottom("")
+            self._set_top(f"")
+            self._set_bottom("Starting in {n}")
             try:
                 self.macropad.play_tone(ticks.get(n, 700), 0.2)
             except Exception:
@@ -403,13 +403,13 @@ class musical_ladder:
         # Two compact text lines under the logo
         self._lbl_top = label.Label(
             terminalio.FONT, text="", color=0xFFFFFF,
-            anchor_point=(0.5, 0.0), anchored_position=(w // 2, base_y)
+            anchor_point=(0.5, 0.0), anchored_position=(w // 2, 31)
         )
         group.append(self._lbl_top)
 
         self._lbl_bottom = label.Label(
             terminalio.FONT, text="", color=0xFFFFFF,
-            anchor_point=(0.5, 0.0), anchored_position=(w // 2, base_y + 12)
+            anchor_point=(0.5, 0.0), anchored_position=(w // 2, 45)
         )
         group.append(self._lbl_bottom)
 

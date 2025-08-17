@@ -300,7 +300,7 @@ class match_it:
     def _on_win(self):
         # Show the score using the existing title labels (logo stays put)
         self._ensure_title_screen()
-        self._set_title_texts(now_playing="Score", game_title=f"Tries: {self.tries}", status="")
+        self._set_title_texts(now_playing="Match It", game_title=f"Solved in {self.tries} tries")
         time.sleep(0.10)  # small nudge so text is drawn before LED blink
 
         # Celebratory cosine pulse on the keys (green)
@@ -544,8 +544,6 @@ class match_it:
         self.logo_tile = None
         self.now_playing = None
         self.game_title = None
-        self.status = None
-
 
     def _show_title_screen(self):
         W = self.mac.display.width
@@ -576,30 +574,22 @@ class match_it:
         y0 = logo_h + top_margin
 
         # Save defaults so we can temporarily show score and restore later
-        self.DEFAULT_NOW_PLAYING = "Now Playing"
+        self.DEFAULT_NOW_PLAYING = "Now Playing:"
         self.DEFAULT_GAME_TITLE  = "Match It"
 
         self.now_playing = label.Label(
             terminalio.FONT, text=self.DEFAULT_NOW_PLAYING,
             color=0xA0A0A0,
-            anchor_point=(0.5, 0.0), anchored_position=(W//2, y0 + 4)
+            anchor_point=(0.5, 0.0), anchored_position=(W//2, 31)
         )
         g.append(self.now_playing)
 
         self.game_title = label.Label(
             terminalio.FONT, text=self.DEFAULT_GAME_TITLE,
             color=0xFFFFFF,
-            anchor_point=(0.5, 0.0), anchored_position=(W//2, y0 + 18)
+            anchor_point=(0.5, 0.0), anchored_position=(W//2, 45)
         )
         g.append(self.game_title)
-
-        # Status line (used for score/messages). Keep a handle to update later.
-        self.status = label.Label(
-            terminalio.FONT, text="",
-            color=0xFFFFFF,
-            anchor_point=(0.5, 0.0), anchored_position=(W//2, y0 + 32)
-        )
-        g.append(self.status)
 
         # Swap the whole group onto the display at once
         self.group = g
@@ -674,7 +664,6 @@ class match_it:
             self.logo_tile = None
             self.now_playing = None
             self.game_title = None
-            self.status = None
             import gc
             gc.collect()
         except Exception:
@@ -684,26 +673,22 @@ class match_it:
         need_build = (
             self.group is None or
             self.now_playing is None or
-            self.game_title is None or
-            self.status is None
+            self.game_title is None
         )
         if need_build:
             self._show_title_screen()
         else:
             self._show()
             
-    def _set_title_texts(self, now_playing=None, game_title=None, status=None):
+    def _set_title_texts(self, now_playing=None, game_title=None):
         if now_playing is not None and self.now_playing:
             self.now_playing.text = now_playing
         if game_title is not None and self.game_title:
             self.game_title.text = game_title
-        if status is not None and self.status:
-            self.status.text = status
         self._show()
 
     def _restore_title_texts(self):
         self._set_title_texts(
             now_playing=self.DEFAULT_NOW_PLAYING,
             game_title=self.DEFAULT_GAME_TITLE,
-            status=""
     )

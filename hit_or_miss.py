@@ -193,11 +193,11 @@ class hit_or_miss:
         )
         self.line1 = label.Label(
             terminalio.FONT, text="",
-            color=0xFFFFFF, anchor_point=(0.5, 0.0), anchored_position=(W//2, 12)
+            color=0xFFFFFF, anchor_point=(0.5, 0.0), anchored_position=(W//2, 21)
         )
         self.line2 = label.Label(
             terminalio.FONT, text="",
-            color=0xAAAAAA, anchor_point=(0.5, 0.0), anchored_position=(W//2, 22)
+            color=0xAAAAAA, anchor_point=(0.5, 0.0), anchored_position=(W//2, 35)
         )
         self.group.append(self.title)
         self.group.append(self.line1)

@@ -227,6 +227,12 @@ class pair_off:
 
         # Mark removed keys dark
         self._paint_numbers()
+        
+        
+        # --- End immediately if no numbers remain (covers final-round tie too) ---
+        if not self.remaining:
+            self._end_game()
+            return
 
         # Brief reveal phase
         self.mode = "reveal"
@@ -332,13 +338,13 @@ class pair_off:
 
         self.title = label.Label(
             terminalio.FONT, text="Pair Off",
-            color=0xFFFFFF, anchor_point=(0.5,0.0), anchored_position=(W//2, y0)
+            color=0xFFFFFF, anchor_point=(0.5,0.0), anchored_position=(W//2, 31)
         )
         g.append(self.title)
 
         self.status = label.Label(
             terminalio.FONT, text="Pick 1 to 10",
-            color=0xA0A0A0, anchor_point=(0.5,0.0), anchored_position=(W//2, y0+14)
+            color=0xA0A0A0, anchor_point=(0.5,0.0), anchored_position=(W//2, 45)
         )
         g.append(self.status)
 

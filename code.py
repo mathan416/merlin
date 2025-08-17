@@ -120,7 +120,7 @@ GAMES_REG = [
     ("Hot Potato",     "hot_potato",    "hot_potato",    {}),
     ("Macro Maze",     "macro_maze",    "maze3d",        {}),
     ("Magic Square",   "magic_square",  "magic_square",  {}),
-    ("Match it",       "match_it",      "match_it",      {}),
+    ("Match It",       "match_it",      "match_it",      {}),
     ("Mindbender",     "mindbender",    "mindbender",    {}),
     ("Mixed Game Bag", "mixed_game_bag","mix_bag",       {}),
     ("Music Machine",  "music_machine", "music_machine", {}),
@@ -372,6 +372,43 @@ def start_game_by_name(name):
     # Let the game build its UI (bitmaps/labels etc.)
     game.new_game()
 
+    # Hand display back to live updates
+    try:
+        macropad.display.auto_refresh = True
+    except Exception:
+        pass
+    
+    # Attach either the game's group (preferred) or a tiny placeholder
+    if hasattr(game, "group") and game.group is not None:
+        macropad.display.root_group = game.group
+    else:    
+        # Fallback placeholder so screen isn’t blank
+        ph = displayio.Group()
+        
+        try:
+            bmp = displayio.OnDiskBitmap("MerlinChrome.bmp")
+            tile = displayio.TileGrid(
+                bmp, pixel_shader=getattr(bmp, "pixel_shader", displayio.ColorConverter())
+            )
+            ph.append(tile)
+        except Exception:
+            pass
+        
+        title = label.Label(
+            terminalio.FONT, text="Now Playing: ", color=0xFFFFFF,
+            anchor_point=(0.5, 0.0),
+            anchored_position=(macropad.display.width // 2, 31)
+        )
+        choice = label.Label(
+            terminalio.FONT, text=name, color=0xFFFFFF,
+            anchor_point=(0.5, 0.0),
+            anchored_position=(macropad.display.width // 2, 45)
+        )
+        ph.append(title)
+        ph.append(choice)
+        macropad.display.root_group = ph
+
+        
     # Hand off control: re-enable auto_refresh and show the game group
     try:
         macropad.display.auto_refresh = True
