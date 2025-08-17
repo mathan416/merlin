@@ -46,6 +46,23 @@ class simon():
         self.tempo = 150 # bpm
         #self.new_game()
 
+    def cleanup(self):
+        # Make game logic inert
+        self.gameMode = "idle"
+        self.puzzle.clear()
+        self.player = 0
+
+        # LEDs: blank immediately and hand control back to the launcher
+        try:
+            self.macropad.pixels.fill(0x000000)
+            self.macropad.pixels.show()
+        except Exception:
+            pass
+        try:
+            self.macropad.pixels.auto_write = True  # in case other games toggled it
+        except AttributeError:
+            pass
+
     def new_game(self):
         print("new Simon game")
 

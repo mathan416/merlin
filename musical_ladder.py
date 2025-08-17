@@ -101,7 +101,26 @@ class musical_ladder:
         self._enter_skill_select()
 
     def cleanup(self):
-        pass
+        # Stop game loop
+        self.mode = "ended"
+        self.group_keys.clear()
+        self._window_active = False
+        self._pending_win = False
+        self._pending_lose = False
+
+        # Clear LEDs
+        try:
+            self.macropad.pixels.fill((0, 0, 0))
+            self.macropad.pixels.show()
+        except Exception:
+            pass
+
+        # Reset OLED
+        try:
+            self._set_top("")
+            self._set_bottom("")
+        except Exception:
+            pass
 
     # ---------- Input ----------
     def button(self, key):

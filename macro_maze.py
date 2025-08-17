@@ -21,7 +21,7 @@ MOVE_SPEED = 0.12
 TURN_SPEED = math.radians(10)
 WALL_COLOR = const(1)
 BG_COLOR = const(0)
-SETTINGS_PATH = "/maze3d_settings.json"
+SETTINGS_PATH = "/macro_maze_settings.json"
 
 # Shading mode for side==1 walls
 # 0 = stripe (fast, vertical resolution friendly)
@@ -383,7 +383,7 @@ class _MacroMazeCore:
         self.did_splash = False
 
     def cleanup(self):
-        # 0) Best-effort: persist settings
+        # 0) Persist settings if needed
         try:
             if getattr(self, "_settings_dirty", False):
                 self._save_settings()
@@ -391,50 +391,50 @@ class _MacroMazeCore:
         except Exception:
             pass
 
-        # 1) Stop any held motion
+        # 1) Stop any held input + any tone
         try:
             if hasattr(self, "pressed") and self.pressed:
                 self.pressed.clear()
         except Exception:
             pass
-
-        # 2) Stop any tone that might be playing (if the device supports it)
         try:
             if hasattr(self.macropad, "stop_tone"):
                 self.macropad.stop_tone()
         except Exception:
             pass
 
-        # 3) Restore display state and detach our group
+        # 2) Display: blank, detach our group, restore refresh
         try:
             disp = getattr(self.macropad, "display", None)
             if disp:
-                # Detach our group if it's still attached
+                # Avoid mid-update flicker
+                try: disp.auto_refresh = False
+                except Exception: pass
+
+                # Best-effort blank frame (doesn’t allocate)
+                try:
+                    _clear(self.bitmap)
+                    disp.refresh(minimum_frames_per_second=0)
+                except Exception:
+                    pass
+
+                # Detach our group if we own the screen
                 try:
                     if getattr(disp, "root_group", None) is self.group:
                         disp.root_group = None
                 except Exception:
-                    # Fallback: force None even if comparison failed
                     try:
                         disp.root_group = None
                     except Exception:
                         pass
 
-                # Restore auto_refresh to whatever was recorded on entry
-                try:
-                    disp.auto_refresh = getattr(self, "_orig_auto_refresh", True)
-                except Exception:
-                    pass
-
-                # Push a refresh so the launcher sees a clean screen
-                try:
-                    disp.refresh()
-                except Exception:
-                    pass
+                # Restore original auto_refresh from __init__
+                try: disp.auto_refresh = getattr(self, "_orig_auto_refresh", True)
+                except Exception: pass
         except Exception:
             pass
 
-        # 4) Turn off LEDs
+        # 3) LEDs off
         try:
             if hasattr(self.macropad, "pixels"):
                 self.macropad.pixels.fill((0, 0, 0))
@@ -442,7 +442,7 @@ class _MacroMazeCore:
         except Exception:
             pass
 
-        # 5) Drop big references so GC can reclaim memory
+        # 4) Drop large references so GC can reclaim RAM
         try:
             if hasattr(self, "_visited") and self._visited is not None:
                 self._visited.clear()
@@ -452,10 +452,11 @@ class _MacroMazeCore:
         self.title   = None
         self.group   = None
         self.bitmap  = None
+        self.palette = None
         self.ray     = None
         self.maze    = None
 
-        # 6) GC sweep
+        # 5) GC sweep
         try:
             import gc
             gc.collect()
@@ -924,22 +925,32 @@ class maze3d:
         self.group = self.core.group
 
     def cleanup(self):
-        # Prefer the core's thorough cleanup (saves settings, detaches group, clears LEDs, GC)       
+        """Prefer the core’s teardown; otherwise fall back to a minimal reset."""
         try:
             if getattr(self, "core", None):
-                self.core.cleanup() 
+                self.core.cleanup()
                 return
         except Exception:
             pass
 
-        # Fallback if core is missing or failed
+        # Fallback if core missing/failed
         try:
-            self.macropad.display.root_group = None
+            disp = getattr(self.macropad, "display", None)
+            if disp:
+                try: disp.auto_refresh = False
+                except Exception: pass
+                try: disp.root_group = None
+                except Exception: pass
+                try: disp.refresh(minimum_frames_per_second=0)
+                except Exception: pass
+                try: disp.auto_refresh = True
+                except Exception: pass
         except Exception:
             pass
         try:
-            self.macropad.pixels.fill((0, 0, 0))
-            self.macropad.pixels.show()
+            if hasattr(self.macropad, "pixels"):
+                self.macropad.pixels.fill((0, 0, 0))
+                self.macropad.pixels.show()
         except Exception:
             pass
             

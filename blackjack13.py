@@ -65,6 +65,97 @@ class blackjack13:
         # build UI
         self._build_display()
 
+    def cleanup(self):
+        # Make this idempotent
+        if getattr(self, "_cleaned", False):
+            return
+        self._cleaned = True
+
+        # 1) Stop animations / sounds
+        try:
+            self.anim_mode = None
+            self.deal_anim_active = False
+            if hasattr(self.mac, "stop_tone"):
+                self.mac.stop_tone()
+        except Exception:
+            pass
+        try:
+            spk = getattr(self.mac, "speaker", None)
+            if spk is not None:
+                # Some builds need explicit disable
+                spk.enable = False
+        except Exception:
+            pass
+
+        # 2) LEDs off
+        try:
+            if hasattr(self.mac, "pixels"):
+                self.mac.pixels.fill(0x000000)
+                self.mac.pixels.show()
+        except Exception:
+            pass
+
+        # 3) Detach our group and restore display state
+        try:
+            disp = getattr(self, "mac", None)
+            disp = getattr(disp, "display", None)
+            if disp:
+                # Avoid mid-frame flicker
+                try:
+                    _orig_auto = getattr(disp, "auto_refresh", True)
+                    disp.auto_refresh = False
+                except Exception:
+                    _orig_auto = True
+
+                # Best-effort blank/refresh
+                try:
+                    if getattr(disp, "root_group", None) is self.group:
+                        disp.root_group = None
+                    else:
+                        root = getattr(disp, "root_group", None)
+                        if root and hasattr(root, "remove") and (self.group in root):
+                            root.remove(self.group)
+                except Exception:
+                    try:
+                        # Older CP API
+                        disp.show(None)
+                    except Exception:
+                        pass
+
+                try:
+                    disp.refresh(minimum_frames_per_second=0)
+                except Exception:
+                    try:
+                        disp.refresh()
+                    except Exception:
+                        pass
+
+                # Restore auto_refresh
+                try:
+                    disp.auto_refresh = _orig_auto
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # 4) Drop big references so GC can reclaim RAM
+        try:
+            self.group = None
+            self.status = None
+            self.you_line = None
+            self.cpu_line = None
+            self.controls = None
+        except Exception:
+            pass
+
+        # 5) GC sweep
+        try:
+            import gc
+            gc.collect()
+            gc.collect()
+        except Exception:
+            pass
+        
     # ---------------- UI ----------------
     def _build_display(self):
         W, H = self.mac.display.width, self.mac.display.height

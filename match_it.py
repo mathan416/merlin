@@ -621,12 +621,64 @@ class match_it:
         time.sleep(0.01)
 
     def cleanup(self):
+        if getattr(self, "_cleaned", False):
+            return
+        self._cleaned = True
+
+        # 1) Stop any tone / disable speaker
         try:
-            self.mac.pixels.auto_write = True
-        except AttributeError:
+            if hasattr(self.mac, "stop_tone"):
+                self.mac.stop_tone()
+        except Exception:
             pass
-        self.mac.pixels.fill((0,0,0))
-        self._led_show()
+        try:
+            spk = getattr(self.mac, "speaker", None)
+            if spk is not None:
+                spk.enable = False
+        except Exception:
+            pass
+
+        # 2) LEDs: black out and restore auto_write (launcher often assumes True)
+        try:
+            px = getattr(self.mac, "pixels", None)
+            if px:
+                for i in range(12):
+                    px[i] = 0x000000
+                try: px.show()
+                except Exception: pass
+                try: px.auto_write = True
+                except Exception: pass
+        except Exception:
+            pass
+
+        # 3) Display: if we still own the screen, detach our group
+        try:
+            disp = getattr(self.mac, "display", None)
+            if disp:
+                g = getattr(self, "group", None)
+                root = getattr(disp, "root_group", None)
+                if root is g:
+                    try:
+                        disp.root_group = None          # CP 9+
+                    except Exception:
+                        try:
+                            disp.show(None)            # CP 8
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
+        # 4) Drop big refs (optional) and GC
+        try:
+            self.group = None
+            self.logo_tile = None
+            self.now_playing = None
+            self.game_title = None
+            self.status = None
+            import gc
+            gc.collect()
+        except Exception:
+            pass
         
     def _ensure_title_screen(self):
         need_build = (

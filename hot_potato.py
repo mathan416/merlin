@@ -203,24 +203,73 @@ class hot_potato:
             return
 
     def cleanup(self):
-        # Stop any transient effect
-        self.expl_active = False
+        if getattr(self, "_cleaned", False):
+            return
+        self._cleaned = True
 
-        # Give pixels back in a clean, predictable state
+        # 0) Stop transient effects/sounds
+        try: self.expl_active = False
+        except Exception: pass
         try:
-            self.mac.pixels.auto_write = True
-        except AttributeError:
+            if hasattr(self.mac, "stop_tone"):
+                self.mac.stop_tone()
+        except Exception:
             pass
-        self.mac.pixels.brightness = self.BRIGHT
-        for i in range(12):
-            self.mac.pixels[i] = 0x000000
         try:
-            self.mac.pixels.show()
-        except AttributeError:
+            spk = getattr(self.mac, "speaker", None)
+            if spk is not None:
+                spk.enable = False
+        except Exception:
             pass
 
-        # Reset transient UI flags so a future resume/new_game repaints correctly
-        self._ui_dirty = True
+        # 1) LEDs: restore immediate writes and turn everything off
+        try:
+            px = getattr(self.mac, "pixels", None)
+            if px:
+                try: px.auto_write = True
+                except Exception: pass
+                for i in range(12):
+                    px[i] = 0x000000
+                try: px.show()
+                except Exception: pass
+        except Exception:
+            pass
+
+        # 2) Detach our display group and push a clean refresh
+        try:
+            disp = getattr(self.mac, "display", None)
+            if disp:
+                try: disp.auto_refresh = False
+                except Exception: pass
+                try:
+                    # CP 9.x:
+                    if getattr(disp, "root_group", None) is getattr(self, "group", None):
+                        try: disp.root_group = None
+                        except Exception:
+                            # CP 8.x:
+                            try: disp.show(None)
+                            except Exception: pass
+                    # force a clean frame so the launcher gets a blank canvas
+                    try: disp.refresh(minimum_frames_per_second=0)
+                    except TypeError:
+                        disp.refresh()
+                except Exception:
+                    pass
+                try: disp.auto_refresh = True
+                except Exception: pass
+        except Exception:
+            pass
+
+        # 3) Reset small UI flags and drop big refs; GC
+        try: self._ui_dirty = True
+        except Exception: pass
+        try: self.group = None
+        except Exception: pass
+        try:
+            import gc
+            gc.collect()
+        except Exception:
+            pass
 
     # ---------- Internals ----------
     def _digit_for_key(self, k):

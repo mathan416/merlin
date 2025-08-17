@@ -104,9 +104,34 @@ class snake:
 
     # ------ Cleanup ------
     def cleanup(self):
+        # Make the game inert so tick() does nothing
+        self._inactive = True
+
+        # Best-effort: stop any tone
         try:
+            if hasattr(self.mac, "stop_tone"):
+                self.mac.stop_tone()
+        except Exception:
+            pass
+
+        # LEDs: hard clear and hand control back to the launcher
+        try:
+            self._led = [0]*12
+            self._led_dirty = False
+            self.mac.pixels.fill(0x000000)
+            self.mac.pixels.show()
             self.mac.pixels.auto_write = True
-        except AttributeError:
+        except Exception:
+            pass
+
+        # Display: detach our group so the launcher can draw immediately
+        try:
+            blank = displayio.Group()
+            try:
+                self.mac.display.root_group = blank   # CP 9.x
+            except AttributeError:
+                self.mac.display.show(blank)          # CP 8.x
+        except Exception:
             pass
         
     # ---------- Display ----------
@@ -215,6 +240,8 @@ class snake:
         return
 
     def tick(self):
+        if getattr(self, "_inactive", False):
+            return
         now = time.monotonic()
 
         if self.game_over:

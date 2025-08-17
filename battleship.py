@@ -352,41 +352,82 @@ class Battleship:
 
     # Clean up before returning to menu
     def cleanup(self):
-        """Tear down UI/resources before returning to the launcher menu."""
+        # Re-entrancy guard
         if getattr(self, "_cleaned", False):
             return
         self._cleaned = True
 
-        ui = getattr(self, "ui", None)
+        ui   = getattr(self, "ui", None)
         disp = getattr(self.mac, "display", None)
 
-        # 1) Let the UI detach itself if it knows how.
+        # 0) Stop any sound immediately
         try:
-            detach = getattr(ui, "detach", None)
-            if callable(detach):
-                detach()
+            if hasattr(self.mac, "stop_tone"):
+                self.mac.stop_tone()
+        except Exception:
+            pass
+        try:
+            spk = getattr(self.mac, "speaker", None)
+            if spk is not None:
+                # Some builds expose enable, others auto_play etc.; enable=False is safe no-op if absent
+                spk.enable = False
         except Exception:
             pass
 
-        # 2) Make sure our group is no longer shown on the display.
+        # 1) Let UI perform its own detach if it supports it
         try:
-            grp = getattr(ui, "group", None)
+            det = getattr(ui, "detach", None)
+            if callable(det):
+                det()
+        except Exception:
+            pass
+
+        # 2) Display: blank (best-effort), detach our group, restore refresh
+        try:
             if disp:
+                # Remember original auto_refresh if you recorded it earlier; fallback to current
+                prev_auto = getattr(self, "_orig_auto_refresh", getattr(disp, "auto_refresh", True))
+
+                # Prevent mid-update flicker
                 try:
-                    # If our group is shown as the root, clear it.
-                    if getattr(disp, "root_group", None) is grp:
+                    disp.auto_refresh = False
+                except Exception:
+                    pass
+
+                # Best-effort blank frame (avoid allocations)
+                try:
+                    # If UI has a quick clear, prefer that (no re-layout)
+                    if ui and hasattr(ui, "clear"):
                         try:
-                            # CP 9+: assign None
+                            ui.clear()
+                        except Exception:
+                            pass
+                    # Force a refresh; some builds require kwarg, others not
+                    try:
+                        disp.refresh(minimum_frames_per_second=0)
+                    except Exception:
+                        try:
+                            disp.refresh()
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
+                # Detach our group from the root
+                try:
+                    grp = getattr(ui, "group", None)
+                    root = getattr(disp, "root_group", None)
+                    if grp is not None and root is grp:
+                        try:
                             disp.root_group = None
                         except Exception:
-                            # Older CP: show(None)
                             try:
+                                # Older displayio API
                                 disp.show(None)
                             except Exception:
                                 pass
                     else:
-                        # If root is a Group and contains ours, remove it.
-                        root = getattr(disp, "root_group", None)
+                        # If our group is a child of a root Group, remove it
                         if root and grp and hasattr(root, "remove"):
                             try:
                                 if grp in root:
@@ -395,29 +436,52 @@ class Battleship:
                                 pass
                 except Exception:
                     pass
+
+                # Restore auto_refresh
+                try:
+                    disp.auto_refresh = prev_auto
+                except Exception:
+                    pass
         except Exception:
             pass
 
-        # 3) Disable speaker to avoid stray tones.
+        # 3) LEDs off
         try:
-            spk = getattr(self.mac, "speaker", None)
-            if spk is not None:
-                spk.enable = False
+            p = getattr(self.mac, "pixels", None)
+            if p:
+                p.fill((0, 0, 0))
+                try:
+                    p.show()
+                except Exception:
+                    pass
         except Exception:
             pass
 
-        # 4) Drop strong refs to large objects so GC can reclaim memory.
+        # 4) Neutralize any timers/flags so a stray tick() after cleanup is harmless
         try:
-            self.ui = None
+            self._led_flash_until   = 0
+            self._post_win_until    = 0
+            self._tick_inited       = False
+            self._next_cursor_toggle = 0
+            self._next_ghost_refresh = 0
+        except Exception:
+            pass
+
+        # 5) Drop big references so GC can reclaim RAM
+        try:
             self.group = None
-            # Optional: clear model refs if you won't resume the session
-            # self.boards = None
-            # self.ai = None
-            # self.rng = None
+            self.ui    = None
         except Exception:
             pass
 
-        # 5) Collect garbage (twice is common on CP to help fragmentation).
+        try:
+            self.boards = None
+            self.ai     = None
+            self.rng    = None
+        except Exception:
+            pass
+
+        # 6) Final GC sweep (twice helps fragmentation on CP)
         try:
             gc.collect()
             gc.collect()

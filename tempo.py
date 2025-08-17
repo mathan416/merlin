@@ -137,15 +137,17 @@ class tempo:
         self._set_bottom("Compose     Play")
 
     def cleanup(self):
-        """Gracefully stop audio/animations and restore LEDs/UI before exit."""
-        # 1) Stop any sound and mark playback off
+        # Make future ticks inert
+        self._inactive = True
+
+        # 1) Stop any sound
         self._is_playing = False
         try:
-            self.mac.stop_tone()  # MacroPad API (safe if not playing)
+            self.mac.stop_tone()
         except Exception:
             pass
 
-        # 2) Cancel all transient states/animations
+        # 2) Cancel all transient states
         self._k9_anim = None
         self._k11_pulse = None
         self._k11_glow = None
@@ -154,37 +156,28 @@ class tempo:
         self._k11_hold_handled = False
         self._k9_click_armed = False
         self._pending_new_game = False
+        self._stop_cursor_blink(restore=False)
 
-        # 3) Stop cursor blink and restore the last blinked key color
-        self._stop_cursor_blink(restore=True)
-
-        # 4) Restore LEDs to cached idle colors (or off if not cached)
+        # 3) LEDs: hard clear and hand control back to launcher
         try:
-            prev_auto = getattr(self.mac.pixels, "auto_write", True)
-            try:
-                self.mac.pixels.auto_write = False
-            except Exception:
-                pass
-
-            for i in range(12):
-                base = self._idle_colors[i] if i < len(self._idle_colors) else 0x000000
-                self.mac.pixels[i] = base
-
-            try:
-                self.mac.pixels.show()
-            except Exception:
-                pass
-
-            try:
-                self.mac.pixels.auto_write = prev_auto
-            except Exception:
-                pass
+            self.mac.pixels.fill(0x000000)
+            self.mac.pixels.show()
+            self.mac.pixels.auto_write = True
         except Exception:
             pass
 
-        # 5) (Optional) Clear footer hints so the next app paints fresh
+        # 4) Display: optionally detach our group and clear text
         try:
+            self._set_top("")
             self._set_bottom("")
+        except Exception:
+            pass
+        try:
+            blank = displayio.Group()
+            try:
+                self.mac.display.root_group = blank   # CP 9.x
+            except AttributeError:
+                self.mac.display.show(blank)          # CP 8.x
         except Exception:
             pass
 
@@ -348,6 +341,8 @@ class tempo:
             self._audition_current()
 
     def tick(self):
+        if getattr(self, "_inactive", False):
+            return
         # Ignore everything during playback
         if getattr(self, "_is_playing", False):
             return

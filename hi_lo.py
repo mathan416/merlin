@@ -151,14 +151,82 @@ class hi_lo:
             except AttributeError: pass
 
     def cleanup(self):
+        if getattr(self, "_cleaned", False):
+            return
+        self._cleaned = True
+
+        # 1) Stop any sound
         try:
-            self.mac.pixels.auto_write = True
-        except AttributeError:
+            if hasattr(self.mac, "stop_tone"):
+                self.mac.stop_tone()
+        except Exception:
             pass
-        for i in range(12):
-            self.mac.pixels[i] = 0x000000
-        try: self.mac.pixels.show()
-        except AttributeError: pass
+        try:
+            spk = getattr(self.mac, "speaker", None)
+            if spk is not None:
+                spk.enable = False
+        except Exception:
+            pass
+
+        # 2) LEDs off (and restore auto_write so the launcher sees changes immediately)
+        try:
+            if hasattr(self.mac, "pixels"):
+                try:
+                    self.mac.pixels.auto_write = True
+                except Exception:
+                    pass
+                self.mac.pixels.fill(0x000000)
+                try: self.mac.pixels.show()
+                except Exception: pass
+        except Exception:
+            pass
+
+        # 3) Detach our display group and leave the screen in a neutral state
+        try:
+            disp = getattr(self, "mac", None)
+            disp = getattr(disp, "display", None)
+            if disp:
+                # Avoid mid-frame flicker
+                try: disp.auto_refresh = False
+                except Exception: pass
+
+                # Best-effort blank (no new allocations if possible)
+                try:
+                    # If we own the root, clear it
+                    if getattr(disp, "root_group", None) is getattr(self, "group", None):
+                        try:
+                            disp.root_group = None     # CP 9.x
+                        except Exception:
+                            try: disp.show(None)       # CP 8.x
+                            except Exception: pass
+                    # Push a refresh so the launcher gets a clean canvas
+                    try: disp.refresh(minimum_frames_per_second=0)
+                    except TypeError:
+                        disp.refresh()
+                except Exception:
+                    pass
+
+                # Restore auto_refresh to default-on
+                try: disp.auto_refresh = True
+                except Exception: pass
+        except Exception:
+            pass
+
+        # 4) Drop big references; let GC reclaim memory
+        try:
+            self.group = None
+            # Optional: drop label refs if you like
+            # self.title = None
+            # self.status = None
+        except Exception:
+            pass
+
+        # 5) GC sweep
+        try:
+            import gc
+            gc.collect()
+        except Exception:
+            pass
 
     # ---------- Internals ----------
     def _digit_for_key(self, k):

@@ -39,6 +39,47 @@ class echo():
         self.player = []
         #self.new_game()
 
+    def cleanup(self):
+        if getattr(self, "_cleaned", False):
+            return
+        self._cleaned = True
+
+        # 1) Stop any tone / speaker
+        try:
+            if hasattr(self.macropad, "stop_tone"):
+                self.macropad.stop_tone()
+        except Exception:
+            pass
+        try:
+            spk = getattr(self.macropad, "speaker", None)
+            if spk is not None:
+                spk.enable = False
+        except Exception:
+            pass
+
+        # 2) Turn off LEDs
+        try:
+            if hasattr(self.macropad, "pixels"):
+                self.macropad.pixels.fill(0x000000)
+                self.macropad.pixels.show()
+        except Exception:
+            pass
+
+        # 3) Reset transient state so a fresh new_game() starts clean
+        try:
+            self.gameMode = "select"
+            self.puzzle.clear()
+            self.player.clear()
+        except Exception:
+            pass
+
+        # 4) GC sweep (cheap on CP, helps fragmentation)
+        try:
+            import gc
+            gc.collect()
+        except Exception:
+            pass
+        
     def new_game(self):
         print ("new Echo game")
         try:

@@ -46,6 +46,65 @@ class mindbender():
         self.player = []
         self._build_display()
 
+    def cleanup(self):
+        if getattr(self, "_cleaned", False):
+            return
+        self._cleaned = True
+
+        # 1) Stop any tone / disable speaker (best-effort)
+        try:
+            if hasattr(self.macropad, "stop_tone"):
+                self.macropad.stop_tone()
+        except Exception:
+            pass
+        try:
+            spk = getattr(self.macropad, "speaker", None)
+            if spk is not None:
+                spk.enable = False
+        except Exception:
+            pass
+
+        # 2) LEDs: blackout and restore auto_write (many launchers expect True)
+        try:
+            px = getattr(self.macropad, "pixels", None)
+            if px:
+                for i in range(12):
+                    px[i] = 0x000000
+                try: px.show()
+                except Exception: pass
+                try: px.auto_write = True
+                except Exception: pass
+        except Exception:
+            pass
+
+        # 3) Display: if our group is the root, clear it
+        try:
+            disp = getattr(self.macropad, "display", None)
+            if disp:
+                g = getattr(self, "group", None)
+                root = getattr(disp, "root_group", None)
+                if root is g:
+                    try:
+                        disp.root_group = None      # CP 9+
+                    except Exception:
+                        try:
+                            disp.show(None)        # CP 8
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
+        # 4) Drop big refs and GC (optional but helps memory fragmentation)
+        try:
+            self.group = None
+            self.title = None
+            self.status = None
+            import gc
+            gc.collect()
+            gc.collect()
+        except Exception:
+            pass
+
     def new_game(self):
         print ("new Mindbender game")
         try:

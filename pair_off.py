@@ -166,11 +166,36 @@ class pair_off:
             except AttributeError: pass
 
     def cleanup(self):
-        try: self.mac.pixels.auto_write = True
-        except AttributeError: pass
-        self.mac.pixels.fill((0,0,0))
-        try: self.mac.pixels.show()
-        except AttributeError: pass
+        # Quash any in-flight logic
+        self.mode = "idle"          # a safe sentinel; your code never ticks on this
+        self.player_guess = None
+        self.merlin_pick = None
+        self.flash_until = 0.0
+
+        # LEDs: return to a known, blank state
+        try:
+            self.mac.pixels.auto_write = True   # hand control back to launcher
+        except AttributeError:
+            pass
+        try:
+            self.mac.pixels.fill(0x000000)
+            self.mac.pixels.show()
+        except Exception:
+            pass
+
+        # Display: clear labels and detach our group
+        try:
+            if hasattr(self, "title"):  self.title.text = ""
+            if hasattr(self, "status"): self.status.text = ""
+            empty = displayio.Group()
+            try:
+                # CP 8.x
+                self.mac.display.show(empty)
+            except AttributeError:
+                # CP 9.x
+                self.mac.display.root_group = empty
+        except Exception:
+            pass
 
     # ---------- Internals ----------
     def _reveal_and_score(self):

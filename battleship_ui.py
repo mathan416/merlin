@@ -1,69 +1,51 @@
-# battleship.py — Battleship for Adafruit MacroPad
-# -------------------------------------------------
-# Main game logic module for the Battleship adaptation on the Adafruit MacroPad.
-# Designed for the Merlin Launcher framework, exposing the required lifecycle methods:
-#   __init__()      — Initialize game state and resources.
-#   new_game()      — Reset game state and UI for a new match.
-#   tick()          — Per-frame update loop for animations and logic.
-#   button()        — Handle key press events from the MacroPad.
-#   button_up()     — Handle key release events (optional).
-#   encoderChange() — Handle rotary encoder input for in-game navigation.
-#   cleanup()       — Release resources before returning to menu.
+# battleship_ui.py — UI & rendering for MacroPad Battleship
+# ---------------------------------------------------------
+# This module owns everything you SEE and most things you HEAR:
+# it builds and manages the display groups, bitmaps, palettes,
+# labels, and key LEDs used by the Battleship game logic in
+# `battleship.py`. Game state lives in Battleship; this file
+# renders it quickly with minimal allocations.
+#
+# Relationship to battleship.py
+# - battleship.py constructs UI(mac, profile) and calls:
+#     - ensure_attached(): attach our Group to the display
+#     - clear()/draw_*(): build or update on-screen layers
+#     - *_overlay/paint_*(): update small regions efficiently
+#     - leds_*(): light keys per screen/state
+#   It also calls ui.detach() during cleanup if available.
+#
+# What this module provides
+# - A single UI class exposing:
+#     group                -> displayio.Group (root of all layers)
+#     ensure_attached()    -> attach group to display (CP 7–9 safe)
+#     clear()              -> build gameplay layers (grid/board/cursor)
+#     refresh_palette()    -> retint without reallocating bitmaps
+#     _set_game_layers_visible(grid, board, cursor)
+#     draw_title()/draw_settings()/draw_place()/draw_battle_overlay()
+#     overlay_update_cells()/repaint_ship_segment_range()/move_cursor()
+#     redraw_ghost()/rotate_ghost()/draw_prompt()/on_shot()
+#     leds_title()/leds_settings()/leds_place()/leds_battle()/leds_results()
+#     detach()             -> (optional) release display ownership cleanly
+#
+# Performance & memory notes
+# - Bitmaps are allocated once and reused; palette retinting avoids churn.
+# - Heavy layers are hidden between screens rather than destroyed.
+# - Drawing helpers write directly into bitmaps via bitmaptools.fill_region().
+# - No blocking loops; only tiny message pauses (MSG_PAUSE) in on_shot().
+#
+# LEDs
+# - Key LED patterns are throttled and diffed to reduce I2C/SPI chatter.
+# - Per-screen helpers centralize mapping: leds_title()/.../leds_results().
+#
+# Cleanup
+# - You do not strictly need a cleanup() here because Battleship.cleanup()
+#   already detaches groups and turns LEDs off defensively.
+# - However, providing UI.detach() (below) lets the UI release itself in a
+#   single call and keeps responsibilities nicely separated.
 #
 # License:
-#   Released under the CC0 1.0 Universal (Public Domain Dedication).
-#   You can copy, modify, distribute, and perform the work, even for commercial purposes,
-#   all without asking permission. Attribution is appreciated but not required.
-#
-# Features:
-# - 10×10 grid rendered on the MacroPad OLED.
-# - Support for movement, ship placement, rotation, and firing.
-# - Personality packs for themed palettes and UI styles.
-# - Debug flag for selective logging during development.
-#
-# Key Controls by State (MacroPad key index layout):
-# Index layout (0–11), left→right, top→bottom:
-#   [ 0] [ 1] [ 2]
-#   [ 3] [ 4] [ 5]
-#   [ 6] [ 7] [ 8]
-#   [ 9] [10] [11]
-#
-# Navigation cluster:
-#   Up: K1   • Left: K3   • Right: K5   • Down: K7
-#   Center (confirm/place/fire): K4
-#   Rotate: K0 or K2
-#   Back to Title: K9 (from most states)
-#
-# TITLE:
-#   K9  — Toggle 1P / 2P
-#   K10 — Open Settings
-#   K11 — Start Game
-#
-# SETTINGS:
-#   K10 — Back to Title
-#   K11 — Next Setting Field (use encoder to change value)
-#
-# PLACE (Ship Placement):
-#   K1/K3/K5/K7 — Move placement cursor
-#   K0 or K2    — Rotate ghost (horizontal/vertical)
-#   K4          — Place ship
-#   K9          — Back to Title
-#
-# HANDOFF (2P mode visibility swap):
-#   K11 — Continue to PLACE or BATTLE
-#   K9  — Back to Title
-#
-# BATTLE (Firing Phase):
-#   K1/K3/K5/K7 — Move targeting cursor
-#   K4          — Fire at selected cell
-#   K9          — Back to Title
-#
-# RESULTS (Win/Lose Screen):
-#   K9 / K11 / K4 — Return to Title
-#
-# Dependencies:
-# - CircuitPython displayio for rendering graphics.
-# - `battleship_personalities.py` for palette/theme definitions.
+#   CC0 1.0 Universal (Public Domain Dedication)
+#   Copy, modify, distribute, perform — attribution appreciated but not required.
 #
 # Date: 2025-08-15
 # Author: Iain Bennett (adapted for MacroPad Battleship)
@@ -160,6 +142,56 @@ class UI:
             except AttributeError:
                 pass
 
+    def detach(self):
+        try:
+            # Turn key LEDs to idle (or off if you prefer)
+            k = self.profile.get("key_leds", {})
+            default = k.get("idle", (0, 0, 0))
+            try:
+                self._set_leds({}, default=default, throttle_ms=0)
+            except Exception:
+                # Final hard-off in case _set_leds guard throttles
+                try:
+                    self.mac.pixels.fill((0, 0, 0))
+                    self.mac.pixels.show()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # Detach our group from the display (covers CP 7–9)
+        try:
+            disp = getattr(self.mac, "display", None)
+            if disp:
+                try:
+                    if getattr(disp, "root_group", None) is self.group:
+                        disp.root_group = None
+                    else:
+                        # If we were appended under a parent Group, try removing us
+                        root = getattr(disp, "root_group", None)
+                        if root and hasattr(root, "remove") and (self.group in root):
+                            root.remove(self.group)
+                except Exception:
+                    try:
+                        # Older API
+                        disp.show(None)
+                    except Exception:
+                        pass
+                # Optional: push a refresh to give the launcher a clean slate
+                try:
+                    disp.refresh(minimum_frames_per_second=0)
+                except Exception:
+                    try:
+                        disp.refresh()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+       
+    def cleanup(self):
+        # Alias for symmetry with Battleship.cleanup()
+        self.detach()
+     
     def leds_title(self, mode_2p=False):
         p = self.profile["palette"]; k = self.profile["key_leds"]
         self._set_leds({9:p["accent"], 10:p["miss"], 11:k["confirm"]}, default=k["idle"])

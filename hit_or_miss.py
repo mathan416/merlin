@@ -101,20 +101,79 @@ class hit_or_miss:
 
     # ------ Cleanup ------
     def cleanup(self):
-        # Reset transient state so nothing lingers after exit
-        self.miss_fades.clear()
-        self.revealing = False
+        if getattr(self, "_cleaned", False):
+            return
+        self._cleaned = True
+
+        # 0) Reset transient state
         try:
-            self.mac.pixels.auto_write = True
-        except AttributeError:
+            self.miss_fades.clear()
+            self.revealing = False
+        except Exception:
             pass
-        for i in range(12):
-            self.mac.pixels[i] = 0x000000
+
+        # 1) Stop any sound and disable speaker
         try:
-            self.mac.pixels.show()
-        except AttributeError:
+            if hasattr(self.mac, "stop_tone"):
+                self.mac.stop_tone()
+        except Exception:
             pass
-        # Let code.py reclaim the display; no root_group change needed here.
+        try:
+            spk = getattr(self.mac, "speaker", None)
+            if spk is not None:
+                spk.enable = False
+        except Exception:
+            pass
+
+        # 2) LEDs: restore immediate updates and turn everything off
+        try:
+            px = getattr(self.mac, "pixels", None)
+            if px:
+                try: px.auto_write = True
+                except Exception: pass
+                try:
+                    for i in range(12):
+                        px[i] = 0x000000
+                    px.show()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # 3) Detach our display group and leave a neutral screen
+        try:
+            disp = getattr(self.mac, "display", None)
+            if disp:
+                try: disp.auto_refresh = False
+                except Exception: pass
+
+                try:
+                    if getattr(disp, "root_group", None) is getattr(self, "group", None):
+                        try:
+                            disp.root_group = None        # CP 9.x
+                        except Exception:
+                            try: disp.show(None)          # CP 8.x
+                            except Exception: pass
+                    # Push a clean refresh
+                    try: disp.refresh(minimum_frames_per_second=0)
+                    except TypeError:
+                        disp.refresh()
+                except Exception:
+                    pass
+
+                try: disp.auto_refresh = True
+                except Exception: pass
+        except Exception:
+            pass
+
+        # 4) Drop big references and GC
+        try: self.group = None
+        except Exception: pass
+        try:
+            import gc
+            gc.collect()
+        except Exception:
+            pass
 
     # ---------------- Display ----------------
     def _build_display(self):

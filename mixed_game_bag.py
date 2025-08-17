@@ -731,17 +731,75 @@ class mix_bag:
             except Exception: pass
 
     def cleanup(self):
-        # turn LEDs off and restore display refresh so the launcher regains control cleanly
-        self._enc_pending_at = 0.0
-        self._led_all_off()
-        try: self.macropad.display.auto_refresh = True
-        except Exception: pass
+        # Make safe to call multiple times
+        if getattr(self, "_cleaned", False):
+            return
+        self._cleaned = True
+
+        # 0) Stop any tone / disable speaker (best-effort)
+        try:
+            if hasattr(self.macropad, "stop_tone"):
+                self.macropad.stop_tone()
+        except Exception:
+            pass
+        try:
+            spk = getattr(self.macropad, "speaker", None)
+            if spk is not None:
+                spk.enable = False
+        except Exception:
+            pass
+
+        # 1) LEDs: blackout and restore auto_write
+        try:
+            px = getattr(self.macropad, "pixels", None)
+            if px:
+                for i in range(len(px)):
+                    px[i] = 0x000000
+                try: px.show()
+                except Exception: pass
+                try: px.auto_write = True
+                except Exception: pass
+        except Exception:
+            pass
+
+        # 2) Display: give control back to the launcher
+        try:
+            disp = getattr(self.macropad, "display", None)
+            if disp:
+                try: self.macropad.display.auto_refresh = True
+                except Exception: pass
+
+                # If our group is the one on screen, clear it
+                try:
+                    if getattr(disp, "root_group", None) is self.group:
+                        try:
+                            disp.root_group = None        # CP 9.x
+                        except Exception:
+                            try:
+                                disp.show(None)            # CP 8.x
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # 3) Drop heavy references (what you already do), but keep it guarded
         try:
             if self.tile and self.group:
-                self.group.remove(self.tile)
-        except Exception: pass
-        self.group = None; self.bmp = None; self.pal = None; self.tile = None
-        self.title = None; self.menu_lbl = None; self.choice_lbl = None
-        self.hint_lbl = None; self.hud = None; self.game = None
-        self._bo_prev_ball = None; self._bo_prev_pad = None
-        self._inv_prev_pad = None; self._inv_prev_inv = []
+                try: self.group.remove(self.tile)
+                except Exception: pass
+            self.group = None; self.bmp = None; self.pal = None; self.tile = None
+            self.title = None; self.menu_lbl = None; self.choice_lbl = None
+            self.hint_lbl = None; self.hud = None; self.game = None
+            self._bo_prev_ball = None; self._bo_prev_pad = None
+            self._inv_prev_pad = None; self._inv_prev_inv = []
+        except Exception:
+            pass
+
+        # 4) Encourage memory to be reclaimed
+        try:
+            import gc
+            gc.collect(); gc.collect()
+        except Exception:
+            pass

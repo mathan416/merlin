@@ -75,6 +75,43 @@ class tictactoe:
         # Build OLED UI
         self._build_display()
 
+    def cleanup(self):
+        # 0) Make future ticks a no-op
+        self._inactive = True
+
+        # 1) Stop any tones
+        try:
+            if hasattr(self.mac, "stop_tone"):
+                self.mac.stop_tone()
+        except Exception:
+            pass
+
+        # 2) Stop animations/state machines
+        try:
+            self._stop_anim()        # endgame pulses, etc.
+        except Exception:
+            pass
+        self.game_over = True        # ensures other paths won't re-render
+
+        # 3) Hard clear LEDs and hand control back
+        try:
+            # ensure nothing re-lights the board/control keys
+            self.mac.pixels.fill(0x000000)
+            self.mac.pixels.show()
+            self.mac.pixels.auto_write = True
+        except Exception:
+            pass
+
+        # 4) Detach our UI from the display so the launcher can draw immediately
+        try:
+            blank = displayio.Group()
+            try:
+                self.mac.display.root_group = blank   # CP 9.x
+            except AttributeError:
+                self.mac.display.show(blank)          # CP 8.x
+        except Exception:
+            pass
+
     # ---------- Display ----------
     def _build_display(self):
         W, H = self.mac.display.width, self.mac.display.height
@@ -162,6 +199,8 @@ class tictactoe:
         return
 
     def tick(self):
+        if getattr(self, "_inactive", False):
+            return
         now = time.monotonic()
 
         # Endgame animation, if active

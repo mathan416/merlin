@@ -41,6 +41,44 @@ class magic_square():
         self.macropad = macropad
         #self.new_game()        
         
+    def cleanup(self):
+        if getattr(self, "_cleaned", False):
+            return
+        self._cleaned = True
+
+        # Stop any tone / silence speaker
+        try:
+            if hasattr(self.macropad, "stop_tone"):
+                self.macropad.stop_tone()
+        except Exception:
+            pass
+        try:
+            spk = getattr(self.macropad, "speaker", None)
+            if spk is not None:
+                spk.enable = False
+        except Exception:
+            pass
+
+        # Give the pixel bus back in a predictable state
+        try:
+            px = getattr(self.macropad, "pixels", None)
+            if px:
+                try: px.auto_write = True
+                except Exception: pass
+                for i in range(12):
+                    px[i] = 0x000000
+                try: px.show()
+                except Exception: pass
+        except Exception:
+            pass
+
+        # (No display group to detach in this game.)
+        try:
+            import gc
+            gc.collect()
+        except Exception:
+            pass
+    
     def new_game(self):
         print("new Magic Square game")
         try:

@@ -421,14 +421,50 @@ class sinclair_demo_bag:
             except Exception: pass
 
     def cleanup(self):
-        # turn LEDs off and restore display refresh so the launcher regains control cleanly
-        self._led_all_off()
-        try: self.macropad.display.auto_refresh = True
-        except Exception: pass
+        # Make our tick() inert
+        self.state = "menu"
+        self.demo = None
+        self._menu_press_t = None
+
+        # Best-effort: stop any tone
         try:
-            if self.tile and self.group:
-                self.group.remove(self.tile)
-        except Exception: pass
-        self.group=None; self.bmp=None; self.pal=None; self.tile=None
-        self.title=None; self.menu_lbl=None; self.choice_lbl=None; self.hint_lbl=None
-        self.hud=None; self.demo=None
+            if hasattr(self.macropad, "stop_tone"):
+                self.macropad.stop_tone()
+        except Exception:
+            pass
+
+        # LEDs off
+        try:
+            self._led_all_off()
+        except Exception:
+            pass
+
+        # Restore menu UI on our surface and detach HUD
+        try:
+            disp = getattr(self.macropad, "display", None)
+            if disp:
+                try: disp.auto_refresh = False
+                except Exception: pass
+
+                # Ensure menu widgets are present; remove HUD
+                clear(self.bmp)
+                for w in (self.title, self.menu_lbl, self.choice_lbl, self.hint_lbl):
+                    if w not in self.group:
+                        self.group.append(w)
+                try:
+                    if self.hud in self.group:
+                        self.group.remove(self.hud)
+                except Exception:
+                    pass
+
+                # Redraw divider and current menu choice
+                hline(self.bmp, 0, SCREEN_W-1, 10, 1)
+                self.choice_lbl.text = self._menu_items[self._menu_index]
+
+                # Push a clean frame
+                try: disp.refresh(minimum_frames_per_second=0)
+                except Exception: pass
+                try: disp.auto_refresh = True
+                except Exception: pass
+        except Exception:
+            pass

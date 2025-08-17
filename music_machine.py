@@ -38,6 +38,50 @@ class music_machine():
         self.tempo = 150  # bpm
         self._ready = False  # block input until new_game() finishes
 
+    def cleanup(self):
+        # Make safe to call more than once
+        if getattr(self, "_cleaned", False):
+            return
+        self._cleaned = True
+
+        # Signal any in-progress playback loop to stop
+        setattr(self, "_abort", True)
+        self._ready = False
+
+        # Stop any tone / quiet the speaker (best-effort)
+        try:
+            if hasattr(self.macropad, "stop_tone"):
+                self.macropad.stop_tone()
+        except Exception:
+            pass
+        try:
+            spk = getattr(self.macropad, "speaker", None)
+            if spk is not None:
+                spk.enable = False
+        except Exception:
+            pass
+
+        # LEDs off and restore auto_write
+        try:
+            px = self.macropad.pixels
+            for i in range(12):
+                px[i] = 0x000000
+            try: px.show()
+            except Exception: pass
+            try: px.auto_write = True
+            except Exception: pass
+        except Exception:
+            pass
+
+        # (No display groups to detach in this game)
+
+        # Encourage GC on small boards
+        try:
+            import gc
+            gc.collect()
+        except Exception:
+            pass
+
     # ---------- Public API ----------
     def new_game(self):
         print("new Music Machine game")
@@ -49,35 +93,34 @@ class music_machine():
 
     # ---------- Core actions ----------
     def play(self):
-        # Guard: ignore if not ready
         if not self._ready:
             return
-        # No notes? Blink K11 yellow quickly as feedback
+        self._abort = False
+
         if not self.sequence:
             self._blink_key(11, 0x999900, 0.18)
             self._led_state_recording()
             return
 
-        # Enter playback
         self.macropad.pixels.fill((0, 0, 0))
-        self.macropad.pixels[11] = 0x009900  # K11 green while playing
+        self.macropad.pixels[11] = 0x009900
 
         delay = 60.0 / max(1, self.tempo)
         for k in self.sequence:
-            # Light the played key briefly
+            if getattr(self, "_abort", False):
+                break
             if 0 <= k <= 11:
                 self.macropad.pixels[k] = self.colors[k]
-            # Play tone or rest
             f = self.tones[k] if 0 <= k < len(self.tones) else 0
             if f > 0:
-                self.macropad.play_tone(f, delay)
+                try: self.macropad.play_tone(f, delay)
+                except Exception: time.sleep(delay)
             else:
                 time.sleep(delay)
-            # Back to black
             if 0 <= k <= 11:
                 self.macropad.pixels[k] = 0x000000
 
-        # Exit playback: back to recording UI
+        # Return to recording UI (unless we were aborted mid-play)
         self.gameMode = "recording"
         self._led_state_recording()
 

@@ -205,9 +205,67 @@ class demoscene:
         self._prev_scene = -1
 
     def cleanup(self):
+        # 1) Best-effort: stop any tone
         try:
-            self.macropad.pixels.fill(0)
-            self.macropad.pixels.show()
+            if hasattr(self.macropad, "stop_tone"):
+                self.macropad.stop_tone()
+        except Exception:
+            pass
+
+        # 2) Turn off LEDs and restore auto_write if we changed it
+        try:
+            p = getattr(self.macropad, "pixels", None)
+            if p:
+                try:
+                    p.fill((0, 0, 0))
+                    p.show()
+                except Exception:
+                    pass
+                # If you captured original auto_write in __init__, restore it
+                try:
+                    if hasattr(self, "_orig_auto_write"):
+                        p.auto_write = self._orig_auto_write
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # 3) Detach our display group and push a refresh
+        try:
+            disp = getattr(self.macropad, "display", None)
+            if disp:
+                try:
+                    if getattr(disp, "root_group", None) is self.group:
+                        disp.root_group = None
+                    else:
+                        # even if not ours anymore, ensure it's not left pointing at us
+                        disp.root_group = None
+                except Exception:
+                    # last-ditch attempt
+                    try:
+                        disp.root_group = None
+                    except Exception:
+                        pass
+                try:
+                    disp.refresh()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # 4) Drop big references so GC can free memory
+        try:
+            self.group = None
+            self.tilegrid = None
+            self.bitmap = None
+            self.palette = None
+        except Exception:
+            pass
+
+        # 5) GC sweep
+        try:
+            import gc
+            gc.collect()
         except Exception:
             pass
 
@@ -628,10 +686,6 @@ class demoscene:
             self._liz_phase = (self._liz_phase + step) % wrap
 
     def _scene_pulse_circles(self, frame):
-        """
-        Concentric rings that breathe without collapsing (integer math),
-        with a working FREEZE toggle (Key 9).
-        """
         MIN_SPACING = 4
         MIN_RINGS   = 4
         MAX_RINGS   = 7

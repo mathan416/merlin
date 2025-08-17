@@ -89,14 +89,41 @@ class three_shells:
 
     # ---------- Cleanup ----------
     def cleanup(self):
+        # Make future ticks a no-op
+        self.mode = "idle"        # not used by tick() -> nothing renders
         self.fade_outs = []
+        self.swap_plan = []
+        self.phase_until = 0.0
+
+        # Best-effort: stop any sound
         try:
-            self.mac.pixels.auto_write = True
-        except AttributeError:
+            if hasattr(self.mac, "stop_tone"):
+                self.mac.stop_tone()
+        except Exception:
             pass
-        for i in range(12):
-            self.mac.pixels[i] = 0x000000
-        self._led_show()
+
+        # LEDs: hard clear and hand pixel control back
+        try:
+            self.mac.pixels.fill(0x000000)
+            self.mac.pixels.show()
+            self.mac.pixels.auto_write = True
+        except Exception:
+            pass
+
+        # Display: clear text and detach our group so launcher can draw immediately
+        try:
+            self.title.text = ""
+            self.status.text = ""
+        except Exception:
+            pass
+        try:
+            blank = displayio.Group()
+            try:
+                self.mac.display.root_group = blank    # CP 9.x
+            except AttributeError:
+                self.mac.display.show(blank)           # CP 8.x
+        except Exception:
+            pass
 
     # ---------- Public API ----------
     def new_game(self):
@@ -130,6 +157,8 @@ class three_shells:
         return
 
     def tick(self):
+        if self.mode == "idle":
+            return
         now = time.monotonic()
 
         # Reveal-mode red fades (non-blocking)

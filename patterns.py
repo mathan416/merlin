@@ -138,7 +138,6 @@ class patterns:
         g.append(self.line1)
         g.append(self.line2)
 
-        self.group = g
         # HUD text cache (two lines)
         self._t_cache = ("","")
 
@@ -155,11 +154,38 @@ class patterns:
         self._to_mode_select()
 
     def cleanup(self):
-        self._led_fill(0)
-        self._led_show()
+        # Stop all game logic and make tick() a no-op
+        self.mode = "idle"          # not handled by tick(), so nothing renders
+        self._stopped = True
+        self._in_gap = False
+        self.stream_idx = -1
+        self._gap_until = 0.0
+        self._show_until = 0.0
+
+        # LEDs: force-clear immediately (bypass frame throttle)
+        try:
+            self.mac.pixels.fill(0x000000)
+            self.mac.pixels.show()
+        except Exception:
+            pass
+        # Hand control back to the launcher
         try:
             self.mac.pixels.auto_write = True
         except AttributeError:
+            pass
+
+        # Display: clear HUD and detach our group so the launcher can draw
+        try:
+            if hasattr(self, "line1"): self.line1.text = ""
+            if hasattr(self, "line2"): self.line2.text = ""
+            empty = displayio.Group()
+            try:
+                # CircuitPython 8.x
+                self.mac.display.show(empty)
+            except AttributeError:
+                # CircuitPython 9.x
+                self.mac.display.root_group = empty
+        except Exception:
             pass
 
     # ---------- Key handling ----------
