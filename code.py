@@ -33,6 +33,7 @@ from adafruit_macropad import MacroPad
 # ---- Encoder handling ----
 ENC_DBL_MS = 600  # encoder double-press window (milliseconds)
 last_enc_down_ms = -1
+last_menu_idx = 0
 enc_exit_armed = False
 
 # ---- RAM debug helpers ----
@@ -46,7 +47,6 @@ def ram_report(label=""):
     return (free, alloc)
 
 def ram_report_delta(before, label=""):
-    """Print the delta vs a prior snapshot tuple returned by ram_snapshot()/ram_report()."""
     b_free, b_alloc = before
     a_free, a_alloc = ram_snapshot()
     df = a_free - b_free
@@ -54,6 +54,26 @@ def ram_report_delta(before, label=""):
     print(f"[RAM Δ] {label} — Δfree: {df} bytes, Δalloc: {da} bytes (now free {a_free}, alloc {a_alloc})")
     return (a_free, a_alloc)
 
+def _aggressive_free_before_import():
+    # Detach any groups and blank the screen to free display buffers.
+    try:
+        macropad.display.root_group = None
+    except Exception:
+        pass
+    try:
+        macropad.display.refresh(minimum_frames_per_second=0)
+    except Exception:
+        try: macropad.display.refresh()
+        except Exception: pass
+    # LEDs off (free pixel buffers if any drivers allocate)
+    try:
+        macropad.pixels.fill((0, 0, 0))
+        macropad.pixels.show()
+    except Exception:
+        pass
+    # Double GC tends to help fragmentation on CP
+    gc.collect(); gc.collect()
+    
 # ---- Input flush helper ----
 ram_report("Boot start")
 
@@ -165,9 +185,7 @@ def _release_menu_assets():
 def _rebuild_menu_assets():
     global menu_group, title_lbl, choice_lbl
     menu_group, title_lbl, choice_lbl = build_menu_group()
-    # NEW: reflect current selection immediately
-    idx = macropad.encoder % len(game_names)
-    choice_lbl.text = game_names[idx]
+    hoice_lbl.text = game_names[last_menu_idx]
 
 # ---------- Menu/Game switching ----------
 def enter_menu():
@@ -178,7 +196,9 @@ def enter_menu():
     macropad.display.root_group = menu_group
 
 def start_game_by_name(name):
+    last_menu_idx = macropad.encoder % len(game_names)
     snap_before = ram_report(f"Before loading {name}")
+
     macropad.pixels.fill((0, 0, 0))
     if name not in SKIP_WIPE:
         play_global_wipe(macropad)
@@ -187,12 +207,12 @@ def start_game_by_name(name):
     ram_report_delta(snap_before, f"After purge (pre-load {name})")
 
     rec_iter = (r for r in GAMES_REG if r[0] == name)
-    rec = next(rec_iter, None)
+    try:
+        rec = next(rec_iter)
+    except StopIteration:
+        rec = None
     if not rec:
-        print("Unknown game:", name)
-        enter_menu()
-        return None
-
+        raise ValueError("Unknown game: " + name)
     _, module_name, class_name, kwargs = rec
     kwargs = dict(kwargs)
 
@@ -204,61 +224,62 @@ def start_game_by_name(name):
 
     try:
         mod = __import__(module_name)
-        cls = getattr(mod, class_name)
-        ram_report_delta(snap_import, f"Imported module {module_name}")
-        snap_construct = ram_snapshot()
-
-        # adapter
-        if module_name == "snake" and "snake2" in kwargs:
-            kwargs = {"wraparound": bool(kwargs["snake2"])}
-
-        game = None
-        ctor_err = None
-        for attempt in (
-            lambda: cls(macropad, tones, **kwargs),
-            lambda: cls(macropad, **kwargs),
-            lambda: cls(macropad, tones),
-            lambda: cls(macropad),
-        ):
-            try:
-                game = attempt(); break
-            except TypeError as e:
-                ctor_err = e
-            except Exception as e:
-                ctor_err = e
-
-        if game is None:
-            raise TypeError(f"Could not construct {class_name}: {ctor_err}")
-
-        ram_report_delta(snap_construct, f"Constructed {class_name}")
-        gc.collect()
-        ram_report_delta(snap_before, f"Total delta after loading {name}")
-
-        game.new_game()
-        if hasattr(game, "group") and game.group is not None:
-            macropad.display.root_group = game.group
-        return game
-
-    except Exception as e:
-        print("Game load failed:", e)
-
-        # Failsafe recovery to menu
+    except MemoryError:
+        _aggressive_free_before_import()
         try:
-            macropad.pixels.fill((0, 0, 0))
-            try: macropad.pixels.show()
-            except Exception: pass
-            macropad.display.root_group = None
-        except Exception:
-            pass
+            mod = __import__(module_name)
+        except Exception as e2:
+            raise ImportError("Failed to import module '{}': {}".format(module_name, e2))
+    except Exception as e:
+        raise ImportError("Failed to import module '{}': {}".format(module_name, e))
 
-        _purge_game_modules()
-        gc.collect()
-        _rebuild_menu_assets()
-        enter_menu()
-        return None
+    try:
+        cls = getattr(mod, class_name)
+    except AttributeError as e:
+        raise ImportError("Module '{}' has no class '{}'".format(module_name, class_name))
+    ram_report_delta(snap_import, f"Imported module {module_name}")
+
+    snap_construct = ram_snapshot()
+
+    # --- special case adapters ---
+    if module_name == "snake" and "snake2" in kwargs:
+        kwargs = {"wraparound": bool(kwargs["snake2"])}
+
+    # --- robust constructor attempts ---
+    game = None
+    ctor_err = None
+    for attempt in (
+        lambda: cls(macropad, tones, **kwargs),  # most common
+        lambda: cls(macropad, **kwargs),         # some games
+        lambda: cls(macropad, tones),            # legacy two-arg
+        lambda: cls(macropad),                   # oldest style
+        lambda: cls(),                           # no-arg fallback (e.g. tictactoe)
+    ):
+        try:
+            game = attempt()
+            break
+        except TypeError as e:
+            ctor_err = e
+        except Exception as e:
+            ctor_err = e
+
+    if game is None:
+        raise TypeError(
+            f"Couldn't construct game {class_name}. Last error: {ctor_err}"
+        )
+
+    ram_report_delta(snap_construct, f"Constructed {class_name}")
+    gc.collect()
+    ram_report_delta(snap_before, f"Total delta after loading {name}")
+
+    game.new_game()
+
+    if hasattr(game, "group") and game.group is not None:
+        macropad.display.root_group = game.group
+
+    return game
 
 def _return_to_menu(current_game_ref):
-    """Cleanly unload the current game and return to the menu (with failsafes)."""
     snap_pre_unload = ram_snapshot()  # existing
 
     # 0) Failsafe: stop any tone the game left running
@@ -299,8 +320,7 @@ def _return_to_menu(current_game_ref):
 
     # 5) Recreate menu UI and show current selection immediately
     _rebuild_menu_assets()
-    idx = macropad.encoder % len(game_names)
-    choice_lbl.text = game_names[idx]
+    choice_lbl.text = game_names[last_menu_idx]
     enter_menu()
 
     ram_report_delta(snap_pre_unload, "After unloading game & purge")  # existing
