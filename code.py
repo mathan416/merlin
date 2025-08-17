@@ -185,7 +185,7 @@ def _release_menu_assets():
 def _rebuild_menu_assets():
     global menu_group, title_lbl, choice_lbl
     menu_group, title_lbl, choice_lbl = build_menu_group()
-    hoice_lbl.text = game_names[last_menu_idx]
+    choice_lbl.text = game_names[last_menu_idx]
 
 # ---------- Menu/Game switching ----------
 def enter_menu():
