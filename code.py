@@ -101,7 +101,7 @@ GAMES_REG = [
     ("Three Shells",   "three_shells",  "three_shells",  {}),
     ("Tic Tac Toe",    "tictactoe",     "tictactoe",     {}),
     ("80s Demo Scene", "sinclair_demo_bag", "sinclair_demo_bag", {}),
-    ("90s Demo Scene", "demoscene",     "demoscene",     {}),
+    ("90s Demo Scene", "90s_demoscene",     "demoscene",     {}),
 ]
 game_names = [n for (n, _, _, _) in GAMES_REG]
 

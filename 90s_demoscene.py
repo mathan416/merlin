@@ -59,6 +59,47 @@ try:
     _HAVE_BMT = True
 except Exception:
     _HAVE_BMT = False
+    
+# --- Cohen–Sutherland line clip (module-scope) ---
+_LEFT, _RIGHT, _BOTTOM, _TOP = 1, 2, 4, 8
+
+def _outcode(x, y, W, H):
+    c = 0
+    if x < 0:     c |= _LEFT
+    elif x >= W:  c |= _RIGHT
+    if y < 0:     c |= _TOP
+    elif y >= H:  c |= _BOTTOM
+    return c
+
+def _clip_line_to_view(x0, y0, x1, y1, W, H):
+    c0 = _outcode(x0, y0, W, H)
+    c1 = _outcode(x1, y1, W, H)
+    while True:
+        if not (c0 | c1):
+            return True, x0, y0, x1, y1
+        if c0 & c1:
+            return False, 0, 0, 0, 0
+        c_out = c0 or c1
+        if c_out & _TOP:
+            dy = (y1 - y0) or 1
+            x = x0 + (x1 - x0) * (0 - y0) / dy
+            y = 0
+        elif c_out & _BOTTOM:
+            dy = (y1 - y0) or 1
+            x = x0 + (x1 - x0) * ((H - 1) - y0) / dy
+            y = H - 1
+        elif c_out & _RIGHT:
+            dx = (x1 - x0) or 1
+            y = y0 + (y1 - y0) * ((W - 1) - x0) / dx
+            x = W - 1
+        else:  # _LEFT
+            dx = (x1 - x0) or 1
+            y = y0 + (y1 - y0) * (0 - x0) / dx
+            x = 0
+        if c_out == c0:
+            x0, y0 = int(x), int(y); c0 = _outcode(x0, y0, W, H)
+        else:
+            x1, y1 = int(x), int(y); c1 = _outcode(x1, y1, W, H)
 
 class demoscene:
     supports_double_encoder_exit = False
@@ -76,6 +117,10 @@ class demoscene:
 
         self.tilegrid = displayio.TileGrid(self.bitmap, pixel_shader=self.palette)
         self.group = displayio.Group()
+        try:
+            macropad.display.root_group = self.group
+        except Exception:
+            pass
         self.group.append(self.tilegrid)
 
         # Frame/scene timing
@@ -244,6 +289,10 @@ class demoscene:
 
         # Display
         self._draw_scene(self._frame)
+        try:
+            self.macropad.display.refresh()
+        except Exception:
+            pass
 
         # Scene advance
         self._scene_ticks += 1
@@ -356,30 +405,28 @@ class demoscene:
         if 0 <= x < self.W and 0 <= y < self.H:
             self.bitmap[x, y] = 1
 
+
     def _line(self, x0, y0, x1, y1):
+        ok, x0, y0, x1, y1 = _clip_line_to_view(x0, y0, x1, y1, self.W, self.H)
+        if not ok:
+            return
         if _HAVE_BMT:
             try:
                 bitmaptools.draw_line(self.bitmap, x0, y0, x1, y1, 1)
                 return
             except Exception:
                 pass
-        # Fallback: Bresenham
-        dx = abs(x1 - x0)
-        dy = -abs(y1 - y0)
+        # Fallback: Bresenham with per-pixel bounds
+        dx = abs(x1 - x0); dy = -abs(y1 - y0)
         sx = 1 if x0 < x1 else -1
         sy = 1 if y0 < y1 else -1
         err = dx + dy
         while True:
             self._pset(x0, y0)
-            if x0 == x1 and y0 == y1:
-                break
+            if x0 == x1 and y0 == y1: break
             e2 = 2 * err
-            if e2 >= dy:
-                err += dy
-                x0 += sx
-            if e2 <= dx:
-                err += dx
-                y0 += sy
+            if e2 >= dy: err += dy; x0 += sx
+            if e2 <= dx: err += dx; y0 += sy
 
     def _circle(self, cx, cy, r):
         if _HAVE_BMT:
@@ -426,10 +473,12 @@ class demoscene:
 
     def _scene_wire_cube(self, frame):
         t = frame * 0.06
-        ca = math.cos(t)
-        sa = math.sin(t)
-        cb = math.cos(t * 0.7 + 1.1)
-        sb = math.sin(t * 0.7 + 1.1)
+        ca, sa = math.cos(t), math.sin(t)
+        cb, sb = math.cos(t * 0.7 + 1.1), math.sin(t * 0.7 + 1.1)
+
+        ZOFF = 260.0
+        NEAR = 30.0        # pixels (min denominator)
+        SCALE = 180.0
 
         proj = []
         for (x, y, z) in self._cube_pts:
@@ -437,16 +486,18 @@ class demoscene:
             yz = x * sa + y * ca
             y2 = yz * cb - z * sb
             z2 = yz * sb + z * cb
-            d = 180.0 / (z2 + 260.0)
+            denom = z2 + ZOFF
+            if denom < NEAR:
+                denom = NEAR
+            d = SCALE / denom
             px = int(self._cx + xz * d)
             py = int(self._cy + y2 * d)
             proj.append((px, py))
 
         for (a, b) in self._cube_edges:
-            ax, ay = proj[a]
-            bx, by = proj[b]
+            ax, ay = proj[a]; bx, by = proj[b]
             self._line(ax, ay, bx, by)
-
+        
     # ----- Lissajous helpers -----
     def _liz_reset_trail(self, clear=True):
         # Reset the ring buffer + last points to avoid cross-erasures
@@ -691,6 +742,8 @@ class demoscene:
             self.bitmap[x, y] = v
 
     def _line_val(self, x0, y0, x1, y1, v):
+        ok, x0, y0, x1, y1 = _clip_line_to_view(x0, y0, x1, y1, self.W, self.H)
+        if not ok: return
         if _HAVE_BMT:
             try:
                 bitmaptools.draw_line(self.bitmap, x0, y0, x1, y1, v)
