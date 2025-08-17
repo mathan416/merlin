@@ -5,10 +5,11 @@
 
 import math, random, time, json
 import displayio, bitmaptools, terminalio
+import os
 from micropython import const
 try:
     from adafruit_display_text import label
-    HAVE_LABEL = True
+    HAVE_LABEL = False
 except Exception:
     HAVE_LABEL = False
 
@@ -22,26 +23,47 @@ WALL_COLOR = const(1)
 BG_COLOR = const(0)
 SETTINGS_PATH = "/maze3d_settings.json"
 
+# Shading mode for side==1 walls
+# 0 = stripe (fast, vertical resolution friendly)
+# 1 = checker (true checkerboard, darker look)
+SHADE_MODE = 1
+
 # Key mapping (launcher forwards 0..11)
 K_UP, K_LEFT, K_RIGHT, K_DOWN = 1, 3, 5, 7
-K_SETTINGS, K_START = 10, 11
-K_MINIMAP = 9
-FAST_MULT = 0.25   # move ~2x faster when all four D-pad keys are held
+K_SETTINGS, K_START = 9, 11     # <- Settings now on K9
+K_MINIMAP = 11                  # <- moved from 9 to 11
+FAST_MULT = 0.25                # move faster or slower when all four D-pad keys are held
 
 # ---------- Tiny 5x5 block font (only letters we need) ----------
 _FONT5 = {
-    "A":["01110","10001","11111","10001","10001"],
-    "C":["01110","10000","10000","10000","01110"],
-    "D":["11110","10001","10001","10001","11110"],
-    "E":["11111","10000","11110","10000","11111"],
-    "H":["10001","10001","11111","10001","10001"],
-    "M":["10001","11011","10101","10001","10001"],
-    "O":["01110","10001","10001","10001","01110"],
-    "R":["11110","10001","11110","10100","10010"],
-    "S":["01111","10000","01110","00001","11110"],
-    "Y":["10001","01010","00100","00100","00100"],
-    "Z":["11111","00010","00100","01000","11111"],
-    " ":[ "00000","00000","00000","00000","00000" ],
+    " ": ["00000","00000","00000","00000","00000"],
+    "-": ["00000","00000","11111","00000","00000"],
+    "A": ["01110","10001","11111","10001","10001"],
+    "B": ["11110","10001","11110","10001","11110"],
+    "C": ["01110","10000","10000","10000","01110"],
+    "D": ["11110","10001","10001","10001","11110"],
+    "E": ["11111","10000","11110","10000","11111"],
+    "F": ["11111","10000","11110","10000","10000"],
+    "G": ["01110","10000","10111","10001","01110"],
+    "H": ["10001","10001","11111","10001","10001"],
+    "I": ["01110","00100","00100","00100","01110"],
+    "J": ["00111","00010","00010","10010","01100"],
+    "K": ["10001","10010","11100","10010","10001"],
+    "L": ["10000","10000","10000","10000","11111"],
+    "M": ["10001","11011","10101","10001","10001"],
+    "N": ["10001","11001","10101","10011","10001"],
+    "O": ["01110","10001","10001","10001","01110"],
+    "P": ["11110","10001","11110","10000","10000"],
+    "Q": ["01110","10001","10001","10011","01111"],
+    "R": ["11110","10001","11110","10100","10010"],
+    "S": ["01111","10000","01110","00001","11110"],
+    "T": ["11111","00100","00100","00100","00100"],
+    "U": ["10001","10001","10001","10001","01110"],
+    "V": ["10001","10001","10001","01010","00100"],
+    "W": ["10001","10001","10101","11011","10001"],
+    "X": ["10001","01010","00100","01010","10001"],
+    "Y": ["10001","01010","00100","00100","00100"],
+    "Z": ["11111","00010","00100","01000","11111"],
 }
 
 def _mk_framebuffer():
@@ -52,29 +74,121 @@ def _mk_framebuffer():
     tg = displayio.TileGrid(bitmap, pixel_shader=palette)
     grp = displayio.Group()
     grp.append(tg)
-    return bitmap, palette, tg, grp
+    return bitmap, palette, grp
 
 def _clear(bitmap):
     _safe_fill(bitmap, 0, 0, SCREEN_W, SCREEN_H, BG_COLOR)
 
     
-def _draw_vert_slice(bitmap, x, h):
+def _draw_vert_slice(bitmap, x, h, shaded=False):
     h = 1 if h < 1 else (SCREEN_H if h > SCREEN_H else h)
     top = (SCREEN_H - h) // 2
-    _safe_fill(bitmap, x, top, 2, h, WALL_COLOR)
+
+    if not shaded:
+        _safe_fill(bitmap, x, top, 2, h, WALL_COLOR)
+        return
+
+    if SHADE_MODE == 0:
+        # --- STRIPE MODE ---
+        start = ((x >> 1) & 1)  # stagger by column
+        y = top + start
+        y_end = top + h
+        while y < y_end:
+            _safe_fill(bitmap, x, y, 2, 1, WALL_COLOR)
+            y += 2
+    else:
+        # --- CHECKER MODE ---
+        y_end = top + h
+        for y in range(top, y_end):
+            if ((x >> 1) + y) & 1:
+                _safe_fill(bitmap, x, y, 2, 1, WALL_COLOR)
 
 def _safe_load_json(path, default):
     try:
-        with open(path, "r") as f: return json.load(f)
-    except Exception:
+        with open(path, "r") as f:
+            return json.load(f)
+    except Exception as e:
+        # If the file is corrupt or missing, return default
+        try:
+            print("Settings load failed:", repr(e))
+        except Exception:
+            pass
         return default
 
-def _safe_save_json(path, data):
+def _remount_temporarily_rw():
+    # Remounts the root filesystem RW if it's currently RO.
+    # Returns (did_change, ok) where:
+    #  - did_change: True if we flipped RO->RW and should flip back later
+    #  - ok:        True if the FS is RW after this call, False if not
     try:
-        with open(path, "w") as f: json.dump(data, f)
+        import storage
+        m = storage.getmount("/")
+        was_ro = getattr(m, "readonly", True)
+        if was_ro:
+            try:
+                # Make RW
+                storage.remount("/", False)
+            except Exception:
+                # Some builds need a second attempt or differ based on USB
+                try:
+                    storage.remount("/", readonly=False)
+                except Exception:
+                    return (False, False)
+            return (True, True)
+        else:
+            return (False, True)
+    except Exception:
+        # If storage isn't available, assume we can write (older builds)
+        return (False, True)
+
+def _restore_ro_if_needed(did_change):
+    try:
+        if not did_change:
+            return
+        import storage
+        try:
+            storage.remount("/", True)
+        except Exception:
+            try:
+                storage.remount("/", readonly=True)
+            except Exception:
+                pass
     except Exception:
         pass
-    
+
+def _safe_save_json(path, data):
+    # Safely save JSON even when CIRCUITPY is normally RO while USB is connected.
+    # Temporarily flips to RW, writes, flushes, then flips back.
+    did_flip, ok = _remount_temporarily_rw()
+    if not ok:
+        try: print("Settings save skipped: filesystem is read-only")
+        except Exception: pass
+        return
+
+    err = None
+    try:
+        with open(path, "w") as f:
+            json.dump(data, f)
+            try:
+                f.flush()
+                os.sync()  # ok if this fails; best effort
+            except Exception:
+                pass
+    except Exception as e:
+        err = e
+
+    _restore_ro_if_needed(did_flip)
+
+    if err:
+        try: print("Settings save failed:", repr(err))
+        except Exception: pass
+
+def _ensure_settings_file_exists(current):
+    try:
+        open(SETTINGS_PATH, "r").close()
+    except Exception:
+        _safe_save_json(SETTINGS_PATH, current)
+        
 def _safe_fill(bitmap, x, y, w, h, color):
     # Accept x,y,width,height — convert to x2,y2 (exclusive) + clip
     x = int(x); y = int(y); w = int(w); h = int(h)
@@ -96,27 +210,42 @@ def _safe_fill(bitmap, x, y, w, h, color):
         
 # ---------- Maze generation ----------
 def _gen_maze(cells):
-    w = h = cells  # odd sizes: 9,13,17...
+    w = h = cells
     grid = [[1]*w for _ in range(h)]
     def nbrs(cx, cy):
         for dx, dy in ((2,0),(-2,0),(0,2),(0,-2)):
             nx, ny = cx+dx, cy+dy
             if 1 <= nx < w-1 and 1 <= ny < h-1 and grid[ny][nx] == 1:
                 yield nx, ny, (dx//2, dy//2)
+
     stack = [(1,1)]
     grid[1][1] = 0
     while stack:
         x, y = stack[-1]
-        opts = list(nbrs(x,y))
+        opts = list(nbrs(x, y))
         if not opts:
             stack.pop(); continue
         nx, ny, mid = random.choice(opts)
         grid[y+mid[1]][x+mid[0]] = 0
         grid[ny][nx] = 0
         stack.append((nx, ny))
-    grid[1][0] = 0               # entrance
-    grid[h-2][w-1] = 0           # exit
-    return grid, (1.5, 1.5), (w-1.5, h-2.5)
+
+    # Entrance: left border adjacent to start (always connected)
+    grid[1][0] = 0
+
+    # Exit: open the RIGHT border at a row that already has a corridor at w-2.
+    # This guarantees connectivity.
+    candidates = [y for y in range(1, h-1) if grid[y][w-2] == 0]
+    if candidates:
+        ey = random.choice(candidates)
+    else:
+        # Extremely defensive: if somehow no candidates, force one near the bottom.
+        ey = h-2
+        grid[ey][w-2] = 0
+    grid[ey][w-1] = 0
+    exit_pos = (w-1.5, ey + 0.5)
+
+    return grid, (1.5, 1.5), exit_pos
 
 # ---------- Raycaster ----------
 class _Raycaster:
@@ -126,6 +255,7 @@ class _Raycaster:
         self.rays = rays
         self.fov = fov
         self.offs = [((i + 0.5)/rays - 0.5) * fov for i in range(rays)]
+        
 
     def set_maze(self, maze):
         self.maze = maze
@@ -137,21 +267,31 @@ class _Raycaster:
         for i, aoff in enumerate(self.offs):
             ra = ang + aoff
             rx, ry = math.cos(ra), math.sin(ra)
+
             mapX, mapY = int(px), int(py)
             dX = 1e9 if rx == 0 else abs(1.0 / rx)
             dY = 1e9 if ry == 0 else abs(1.0 / ry)
-            if rx < 0: stepX = -1; sideX = (px - mapX) * dX
-            else:      stepX =  1; sideX = (mapX + 1.0 - px) * dX
-            if ry < 0: stepY = -1; sideY = (py - mapY) * dY
-            else:      stepY =  1; sideY = (mapY + 1.0 - py) * dY
+
+            if rx < 0:
+                stepX = -1; sideX = (px - mapX) * dX
+            else:
+                stepX =  1; sideX = (mapX + 1.0 - px) * dX
+            if ry < 0:
+                stepY = -1; sideY = (py - mapY) * dY
+            else:
+                stepY =  1; sideY = (mapY + 1.0 - py) * dY
+
             hit, side = False, 0
             for _ in range(128):
                 if sideX < sideY:
                     sideX += dX; mapX += stepX; side = 0
                 else:
                     sideY += dY; mapY += stepY; side = 1
-                if mapX < 0 or mapX >= self.w or mapY < 0 or mapY >= self.h: hit=True; break
-                if self.maze[mapY][mapX] == 1: hit=True; break
+                if mapX < 0 or mapX >= self.w or mapY < 0 or mapY >= self.h:
+                    hit = True; break
+                if self.maze[mapY][mapX] == 1:
+                    hit = True; break
+
             if not hit:
                 dist = 999.0
             else:
@@ -159,26 +299,60 @@ class _Raycaster:
                     dist = (mapX - px + (1 - stepX)*0.5) / (rx if rx else 1e-6)
                 else:
                     dist = (mapY - py + (1 - stepY)*0.5) / (ry if ry else 1e-6)
-                if dist == 0: dist = 1e-3
+                if dist == 0:
+                    dist = 1e-3
                 dist = abs(dist)
-            slice_h = int(SCREEN_H / dist)
-            _draw_vert_slice(self.bitmap, i*2, slice_h)
+
+            # Perpendicular distance correction (remove fisheye)
+            perp = dist * math.cos(aoff)
+            if perp < 1e-3:
+                perp = 1e-3
+
+            slice_h = int(SCREEN_H / perp)
+
+            # shaded only if we actually hit and the wall was a Y-side
+            _draw_vert_slice(self.bitmap, i*2, slice_h, shaded=(hit and side == 1))
 
 # ---------- Core (event-driven, no blocking loop) ----------
 class _MacroMazeCore:
     DIFFS = [("EASY", 9), ("MED", 13), ("HARD", 17)]
     COLORS = [
-        (0x20,0x20,0xFF), (0x00,0xFF,0x40), (0xFF,0x90,0x10),
-        (0xFF,0x10,0x10), (0xE0,0xE0,0xE0), (0x90,0x30,0xE0),
+        (0x70,0x20,0xB0),  # Purple (deeper violet)
+        (0x10,0x10,0xC0),  # Blue (navy-like)
+        (0x00,0xB0,0x30),  # Green (forest-ish)
+        (0xD0,0xD0,0x00),  # Yellow (golden, less neon)
+        (0xC0,0x60,0x00),  # Orange (amber)
+        (0xC0,0x00,0x00),  # Red (deep crimson)
+        (0xE0,0xE0,0xE0),  # White (unchanged)
     ]
+    COLOR_LABELS = ["P","B","G","Y","O","R","W"]
 
+    def _load_settings(self):
+        s = _safe_load_json(SETTINGS_PATH, {
+            "sfx": True,
+            "dir_color_idx": 0,
+            "diff_idx": 0,
+        })
+        self.sfx = bool(s.get("sfx", True))
+        self.diff_idx = int(s.get("diff_idx", 0)) % len(self.DIFFS)
+        self.dir_color_idx = int(s.get("dir_color_idx", 0)) % len(self.COLORS)
+        self.dir_color = self.COLORS[self.dir_color_idx]
+
+        # NEW: ensure a file is created immediately (with whatever we just loaded)
+        _ensure_settings_file_exists({
+            "sfx": self.sfx,
+            "dir_color_idx": self.dir_color_idx,
+            "diff_idx": self.diff_idx,
+        })
+        
     def __init__(self, macropad):
         self.macropad = macropad
+        self._settings_dirty = False
         
         self._orig_auto_refresh = getattr(self.macropad.display, "auto_refresh", True)
         self.macropad.display.auto_refresh = False
 
-        self.bitmap, self.palette, self._tg, self.group = _mk_framebuffer()
+        self.bitmap, self.palette, self.group = _mk_framebuffer()
         self.pressed = set()
         
 
@@ -189,15 +363,9 @@ class _MacroMazeCore:
             self.group.append(self.title)
 
         self.macropad.display.root_group = self.group
-        self.macropad.display.auto_refresh = False
 
         # Persisted settings
-        s = _safe_load_json(SETTINGS_PATH, {"sfx": True, "dir_color_idx": 0, "diff_idx": 0})
-        self.sfx = bool(s.get("sfx", True))
-        self.dir_color_idx = int(s.get("dir_color_idx", 0)) % len(self.COLORS)
-        self.diff_idx = int(s.get("diff_idx", 0)) % len(self.DIFFS)
-
-        self.dir_color = self.COLORS[self.dir_color_idx]
+        self._load_settings()
         self._light_dpad()
         
         # Map Settings
@@ -215,37 +383,52 @@ class _MacroMazeCore:
         self.did_splash = False
 
     def cleanup(self):
-        """Release resources cleanly when unloading the game."""
-        # 1) Persist settings
+        # 0) Best-effort: persist settings
         try:
-            self._save_settings()
+            if getattr(self, "_settings_dirty", False):
+                self._save_settings()
+                self._settings_dirty = False
         except Exception:
             pass
 
-        # 2) Stop any held motion
+        # 1) Stop any held motion
         try:
-            self.pressed.clear()
+            if hasattr(self, "pressed") and self.pressed:
+                self.pressed.clear()
+        except Exception:
+            pass
+
+        # 2) Stop any tone that might be playing (if the device supports it)
+        try:
+            if hasattr(self.macropad, "stop_tone"):
+                self.macropad.stop_tone()
         except Exception:
             pass
 
         # 3) Restore display state and detach our group
         try:
-            if getattr(self.macropad, "display", None):
-                # Detach our group (even if not currently set, just be safe)
+            disp = getattr(self.macropad, "display", None)
+            if disp:
+                # Detach our group if it's still attached
                 try:
-                    if self.macropad.display.root_group is self.group:
-                        self.macropad.display.root_group = None
+                    if getattr(disp, "root_group", None) is self.group:
+                        disp.root_group = None
                 except Exception:
-                    # Fallback: just clear it
-                    self.macropad.display.root_group = None
-                # Restore auto_refresh to what code.py expects
+                    # Fallback: force None even if comparison failed
+                    try:
+                        disp.root_group = None
+                    except Exception:
+                        pass
+
+                # Restore auto_refresh to whatever was recorded on entry
                 try:
-                    self.macropad.display.auto_refresh = getattr(self, "_orig_auto_refresh", True)
+                    disp.auto_refresh = getattr(self, "_orig_auto_refresh", True)
                 except Exception:
                     pass
-                # One manual refresh to push the detach if still in manual mode
+
+                # Push a refresh so the launcher sees a clean screen
                 try:
-                    self.macropad.display.refresh()
+                    disp.refresh()
                 except Exception:
                     pass
         except Exception:
@@ -253,25 +436,24 @@ class _MacroMazeCore:
 
         # 4) Turn off LEDs
         try:
-            self.macropad.pixels.fill((0, 0, 0))
-            self.macropad.pixels.show()
+            if hasattr(self.macropad, "pixels"):
+                self.macropad.pixels.fill((0, 0, 0))
+                self.macropad.pixels.show()
         except Exception:
             pass
 
         # 5) Drop big references so GC can reclaim memory
-        self.title = None
-        self.group = None
-        self.bitmap = None
-        self.palette = None
-        self._tg = None
-        self.ray = None
-        self.maze = None
         try:
-            if self._visited is not None:
+            if hasattr(self, "_visited") and self._visited is not None:
                 self._visited.clear()
         except Exception:
             pass
-        self._visited = None
+
+        self.title   = None
+        self.group   = None
+        self.bitmap  = None
+        self.ray     = None
+        self.maze    = None
 
         # 6) GC sweep
         try:
@@ -348,8 +530,7 @@ class _MacroMazeCore:
         for i, ch in enumerate(text.upper()):
             pat = _FONT5.get(ch, _FONT5[" "])
             gx = x + i * (gw + gap)
-            gy = y
-            yy = gy
+            yy = y
             for r in range(5):
                 row = pat[r]
                 xx = gx
@@ -406,13 +587,26 @@ class _MacroMazeCore:
         _clear(self.bitmap); self.macropad.display.refresh()
 
     def _set_mode(self, new_mode):
+        prev = getattr(self, "mode", None)
+
         # If we're leaving GAME, drop any held keys so motion doesn't "stick"
-        if getattr(self, "mode", None) == "GAME" and new_mode != "GAME":
+        if prev == "GAME" and new_mode != "GAME":
             if hasattr(self, "pressed") and self.pressed:
                 self.pressed.clear()
+
+        # Only save when leaving SETTINGS, and only if something changed
+        if prev == "SETTINGS" and new_mode != "SETTINGS":
+            if getattr(self, "_settings_dirty", False):
+                try:
+                    self._save_settings()
+                except Exception:
+                    pass
+                self._settings_dirty = False
+
         self.mode = new_mode
+        
     # ---------- UI ----------
-    def enter_menu(self, first=False):
+    def enter_menu(self):
         # Do the splash exactly once per process
         if not self.did_splash:
             self._splash()
@@ -431,35 +625,25 @@ class _MacroMazeCore:
 
         _clear(self.bitmap)
 
-        if HAVE_LABEL:
-            self._set_title("")
-
-        y0 = 12
-        row_h = 14
-
-        # Row chrome (highlight for selected row, thin divider for others)
-        for i, (name, _) in enumerate(self.DIFFS):
-            y = y0 + i * row_h
-            if i == self.diff_idx:
-                _safe_fill(self.bitmap, 4,  y - 1,        SCREEN_W - 8,  12, WALL_COLOR)  # white bar
-                _safe_fill(self.bitmap, 8,  y + 2,        SCREEN_W - 16,  6, BG_COLOR)    # inner black stripe
-            else:
-                _safe_fill(self.bitmap, 6,  y,            SCREEN_W - 12,  1, WALL_COLOR)  # thin line
-
-        # Center the labels
+        # Text metrics (must match _draw_text5 settings)
         block, gap = 2, 1
-        glyph_w = 5*block + 4*gap
+        glyph_w = 5*block + 4*gap         # 14 px per glyph width unit (incl gaps within glyph)
+        glyph_h = 5*block + 4*gap         # 14 px tall
+        row_h   = glyph_h                  # row height exactly equals glyph height
+        y0      = 12                       # top of first row
+
+        # Compute centered x for the widest label so all rows are aligned
         def text_px_w(s): return len(s) * (glyph_w + gap) - gap
-        max_w = 0
-        for name, _ in self.DIFFS:
-            w = text_px_w(name)
-            if w > max_w:
-                max_w = w
+        max_w = max(text_px_w(name) for name, _ in self.DIFFS)
         x_text = (SCREEN_W - max_w) // 2
 
-        # Draw labels (invert color for selected row)
+        # Draw only the selected bar (no horizontal dividers)
+        sel_y_top = y0 + self.diff_idx * row_h
+        _safe_fill(self.bitmap, 4, sel_y_top, SCREEN_W - 8, glyph_h, WALL_COLOR)  # solid white bar
+
+        # Draw labels: black on the selected white bar, white elsewhere
         for i, (name, _) in enumerate(self.DIFFS):
-            y = y0 + i * row_h + 2
+            y = y0 + i * row_h
             color = BG_COLOR if i == self.diff_idx else WALL_COLOR
             self._draw_text5(x_text, y, name, color=color, block=block, gap=gap)
 
@@ -468,43 +652,79 @@ class _MacroMazeCore:
         self.needs_redraw = False
 
     def _draw_settings(self, force=False):
-        if not force and not self.needs_redraw: return
+        if not force and not self.needs_redraw:
+            return
+
         _clear(self.bitmap)
-        if HAVE_LABEL:
-            self._set_title("SETTINGS  K7:Back  K1:SFX  K3/K5:Color")
-        y1 = 18
-        _safe_fill(self.bitmap, 12, y1, 40, 10, WALL_COLOR if not self.sfx else BG_COLOR)
-        _safe_fill(self.bitmap, 76, y1, 40, 10, WALL_COLOR if self.sfx else BG_COLOR)
-        y2 = 40
-        for i in range(len(self.COLORS)):
-            x = 12 + i*18
-            _safe_fill(self.bitmap, x,     y2, 12,  8, WALL_COLOR if i==self.dir_color_idx else BG_COLOR)
-            _safe_fill(self.bitmap, x,     y2, 12,  1, WALL_COLOR)
-            _safe_fill(self.bitmap, x,   y2+7, 12,  1, WALL_COLOR)
-            _safe_fill(self.bitmap, x,     y2,  1,  8, WALL_COLOR)
-            _safe_fill(self.bitmap, x+11,  y2,  1,  8, WALL_COLOR)
+        # no tiny label, we’ve removed _set_title calls
+
+        # --- metrics (match _draw_text5) ---
+        block, gap = 2, 1
+        glyph_w = 5*block + 4*gap      # 14
+        glyph_h = 5*block + 4*gap      # 14
+        def text_px_w(s): return len(s) * (glyph_w + gap) - gap
+
+        # ---------- Title ----------
+        title = "SETTINGS"
+        x_title = (SCREEN_W - text_px_w(title)) // 2
+        self._draw_text5(x_title, 2, title, color=WALL_COLOR, block=block, gap=gap)
+
+        # ---------- SFX row ----------
+        y_sfx = 20
+        self._draw_text5(8, y_sfx, "SFX", color=WALL_COLOR, block=block, gap=gap)
+
+        # Make the block width = width of "OFF" (fixed), height = glyph height
+        sfx_block_h = glyph_h
+        sfx_block_w = text_px_w("OFF")
+        sfx_block_right = SCREEN_W - 8   # right margin align
+        sfx_block_x = sfx_block_right - sfx_block_w
+        sfx_block_y = y_sfx
+
+        if self.sfx:
+            # ON: solid white rectangle with black text
+            _safe_fill(self.bitmap, sfx_block_x, sfx_block_y, sfx_block_w, sfx_block_h, WALL_COLOR)
+            on_x = sfx_block_x + (sfx_block_w - text_px_w("ON")) // 2
+            self._draw_text5(on_x, sfx_block_y, "ON", color=BG_COLOR, block=block, gap=gap)
+        else:
+            # OFF: just white text on black (no rect at all)
+            off_x = sfx_block_x + (sfx_block_w - text_px_w("OFF")) // 2
+            self._draw_text5(off_x, sfx_block_y, "OFF", color=WALL_COLOR, block=block, gap=gap)
+
+        # ---------- COLOUR row ----------
+        y_color = 40
+        self._draw_text5(8, y_color, "COLOUR", color=WALL_COLOR, block=block, gap=gap)
+
+        slot_x = 8 + text_px_w("COLOUR") + 12
+        cur_lbl = self.COLOR_LABELS[self.dir_color_idx]
+
+        # Highlight only the currently selected colour
+        if True:  # always draw current selection highlighted
+            self._draw_text5(slot_x, y_color, cur_lbl, color=WALL_COLOR, block=block, gap=gap)
+        # If you later want to show all colours, you’d draw them unhighlighted instead
+
         self._set_stage_leds("settings")
         self.macropad.display.refresh()
         self.needs_redraw = False
 
     def _set_stage_leds(self, stage):
         p = self.macropad.pixels
-        if stage == "splash":
-            p.fill((0,0,0)); 
-            for k in (0,2,9,11): p[k] = (0,40,60)
-        elif stage == "menu":
+        if stage == "menu":
             p.fill((8,8,12))
             for k in (K_UP, K_LEFT, K_RIGHT, K_DOWN): p[k] = self.dir_color
             p[K_SETTINGS] = (255,180,30)
             p[K_START]    = (40,200,60)
         elif stage == "settings":
             p.fill((0,0,0))
-            for k in (K_UP, K_LEFT, K_RIGHT, K_DOWN): p[k] = self.dir_color
-            p[K_DOWN] = (200,60,60)   # back
-            p[K_UP]   = (80,160,255)  # SFX
-            p[K_LEFT] = (180,100,255) # color prev
-            p[K_RIGHT]= (180,100,255) # color next
-            p[K_MINIMAP] = (120,200,200)
+            # K3/K5 show the current theme colour
+            p[K_LEFT]  = self.dir_color
+            p[K_RIGHT] = self.dir_color
+            # Keep the rest as hints
+            p[K_UP]       = (80,160,255)   # SFX toggle hint
+            p[K_DOWN]     = (0,0,0)        # unlit / back not used here
+            p[K_SETTINGS] = (255,180,30)   # K9 = back to MENU
+            try: p.show()
+            except Exception: pass
+            return
         elif stage == "game":
             p.fill((0,0,0))
             for k in (K_UP, K_LEFT, K_RIGHT, K_DOWN): p[k] = self.dir_color
@@ -515,7 +735,7 @@ class _MacroMazeCore:
         
     # ---------- Game lifecycle ----------
     def _start(self):
-        name, cells = self.DIFFS[self.diff_idx]
+        _, cells = self.DIFFS[self.diff_idx]
         self._led_theme_start()
         self.maze, (self.cam_x, self.cam_y), self.exit_pos = _gen_maze(cells)
         self.cam_a = 0.0
@@ -588,14 +808,26 @@ class _MacroMazeCore:
         # Win condition
         ex, ey = self.exit_pos
         if (self.cam_x - ex) ** 2 + (self.cam_y - ey) ** 2 < 0.16:
+            # quick double-beep (same feel as before, but no flash)
             for _ in range(2):
-                _clear(self.bitmap); self.macropad.display.refresh(); self._tone(1200, 0.05); time.sleep(0.07)
-                _safe_fill(self.bitmap, 0, 0, SCREEN_W, SCREEN_H, WALL_COLOR); self.macropad.display.refresh(); time.sleep(0.07)
-            self._set_mode("MENU"); self.needs_redraw = True; self._draw_menu(True); self._set_stage_leds("menu")
+                self._tone(1200, 0.05)
+                time.sleep(0.06)
+
+            # Clear, show centered message, pause
+            _clear(self.bitmap)
+            self._draw_block_centered(["YOU", "GOT", "OUT"])
+            self.macropad.display.refresh()
+            time.sleep(2.0)
+
+            # Back to menu
+            self._set_mode("MENU")
+            self.needs_redraw = True
+            self._draw_menu(True)
+            self._set_stage_leds("menu")
     # ---------- Button handlers (launcher forwards key events) ----------
     def button(self, key):
-        if self.mode == "MENU":
-            if key == K_SETTINGS:
+        if self.mode == "MENU":          
+            if key == K_SETTINGS:  # K9 now
                 self._set_mode("SETTINGS"); self.needs_redraw = True; self._draw_settings(True); self._tone(500, 0.02)
             elif key == K_START:
                 self._start()
@@ -605,15 +837,38 @@ class _MacroMazeCore:
                 self.diff_idx = (self.diff_idx + 1) % len(self.DIFFS); self.needs_redraw = True; self._draw_menu(); self._tone(700, 0.02); self._save_settings()
 
         elif self.mode == "SETTINGS":
-            if key == K_DOWN:   # back
-                self._set_mode("MENU"); self.needs_redraw = True; self._draw_menu(True); self._tone(500, 0.02); self._save_settings()
-            elif key == K_UP:   # toggle SFX
-                self.sfx = not self.sfx; self.needs_redraw = True; self._draw_settings(); self._tone(500, 0.02); self._save_settings()
-            elif key == K_LEFT: # prev color
-                self.dir_color_idx = (self.dir_color_idx - 1) % len(self.COLORS); self.dir_color = self.COLORS[self.dir_color_idx]; self._light_dpad(); self.needs_redraw = True; self._draw_settings(); self._tone(650, 0.02); self._save_settings()
-            elif key == K_RIGHT:# next color
-                self.dir_color_idx = (self.dir_color_idx + 1) % len(self.COLORS); self.dir_color = self.COLORS[self.dir_color_idx]; self._light_dpad(); self.needs_redraw = True; self._draw_settings(); self._tone(650, 0.02); self._save_settings()
+            if key == K_SETTINGS:   # back to MENU
+                self._set_mode("MENU")
+                self.needs_redraw = True
+                self._draw_menu(True)
+                self._tone(500, 0.02)
+                # no direct save here; _set_mode handles it if dirty
 
+            elif key == K_UP:       # toggle SFX
+                self.sfx = not self.sfx
+                self._settings_dirty = True
+                self.needs_redraw = True
+                self._draw_settings()
+                self._tone(500, 0.02)
+
+            elif key == K_LEFT:     # prev colour
+                self.dir_color_idx = (self.dir_color_idx - 1) % len(self.COLORS)
+                self.dir_color = self.COLORS[self.dir_color_idx]
+                self._settings_dirty = True
+                self._set_stage_leds("settings")
+                self.needs_redraw = True
+                self._draw_settings()
+                self._tone(650, 0.02)
+
+            elif key == K_RIGHT:    # next colour
+                self.dir_color_idx = (self.dir_color_idx + 1) % len(self.COLORS)
+                self.dir_color = self.COLORS[self.dir_color_idx]
+                self._settings_dirty = True
+                self._set_stage_leds("settings")
+                self.needs_redraw = True
+                self._draw_settings()
+                self._tone(650, 0.02)
+                
         elif self.mode == "GAME":
             mult = FAST_MULT
             tap_lin = MOVE_SPEED * mult
@@ -623,8 +878,8 @@ class _MacroMazeCore:
                 self.pressed.add(key)
 
             if key == K_SETTINGS:
-                self._set_mode("SETTINGS"); self.needs_redraw = True
-                self._draw_settings(True); self._tone(500, 0.02)
+                self._set_mode("MENU"); self.needs_redraw = True
+                self._draw_menu(True); self._tone(500, 0.02)
                 # (optional) stop continuous motion when leaving game
                 self.pressed.clear()
                 return
@@ -669,7 +924,7 @@ class maze3d:
         self.group = self.core.group
 
     def cleanup(self):
-        # Prefer the core's thorough cleanup (saves settings, detaches group, clears LEDs, GC)
+        # Prefer the core's thorough cleanup (saves settings, detaches group, clears LEDs, GC)       
         try:
             if getattr(self, "core", None):
                 self.core.cleanup() 
@@ -690,7 +945,7 @@ class maze3d:
             
     def new_game(self):
         # Reset to menu view (fresh splash not needed on re-entry)
-        self.core.enter_menu(first=True)
+        self.core.enter_menu()
 
     def tick(self):
         self.core.tick()
