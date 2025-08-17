@@ -172,15 +172,15 @@ class blackjack13:
         )
         self.you_line = label.Label(
             terminalio.FONT, text="You: 0",
-            color=0xFFFFFF, anchor_point=(0.0, 0.0), anchored_position=(4, 12)
+            color=0xFFFFFF, anchor_point=(0.0, 0.0), anchored_position=(4, 20)
         )
         self.cpu_line = label.Label(
-            terminalio.FONT, text="CPU: —",
-            color=0xFFFFFF, anchor_point=(0.0, 0.0), anchored_position=(4, 22)
+            terminalio.FONT, text="CPU: 0",
+            color=0xFFFFFF, anchor_point=(0.0, 0.0), anchored_position=(4, 32)
         )
         self.controls = label.Label(
             terminalio.FONT, text="New   Stand   Hit",
-            color=0xAAAAAA, anchor_point=(0.5, 0.0), anchored_position=(W//2, 34)
+            color=0xAAAAAA, anchor_point=(0.5, 0.0), anchored_position=(W//2, 51)
         )
         self.group.append(self.status)
         self.group.append(self.you_line)

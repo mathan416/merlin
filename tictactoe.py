@@ -125,20 +125,20 @@ class tictactoe:
 
         # Status + legends
         self.status = label.Label(
-            terminalio.FONT, text="Human to move",
+            terminalio.FONT, text="Human's move",
             color=0xFFFFFF, anchor_point=(0.5, 0.0), anchored_position=(W//2, 0)
         )
         self.legend1 = label.Label(
             terminalio.FONT, text="You: RED (blink)",
-            color=0xFFFFFF, anchor_point=(0.5, 0.0), anchored_position=(W//2, 12)
+            color=0xFFFFFF, anchor_point=(0.5, 0.0), anchored_position=(W//2, 20)
         )
         self.legend2 = label.Label(
             terminalio.FONT, text="CPU: BLUE (steady)",
-            color=0xFFFFFF, anchor_point=(0.5, 0.0), anchored_position=(W//2, 22)
+            color=0xFFFFFF, anchor_point=(0.5, 0.0), anchored_position=(W//2, 32)
         )
         self.controls = label.Label(
             terminalio.FONT, text="New   Swap   CPU",
-            color=0xAAAAAA, anchor_point=(0.5, 0.0), anchored_position=(W//2, 34)
+            color=0xAAAAAA, anchor_point=(0.5, 0.0), anchored_position=(W//2, 51)
         )
         self.group.append(self.status)
         self.group.append(self.legend1)
@@ -177,7 +177,7 @@ class tictactoe:
         self._lights_clear()
         self._stop_anim()
         self._show_legends(True)
-        self._normal_status("Human to move")
+        self._normal_status("Human's move")
 
         # Switch to the Tic Tac Toe UI group
         try:
@@ -350,7 +350,7 @@ class tictactoe:
             self._start_end_anim([0xFFFFFF, self.COLOR_CPU, self.COLOR_HUMAN], pulses_per_color=1)
         else:
             self.human_to_move = not self.human_to_move
-            self._normal_status("Human to move" if self.human_to_move else "CPU to move")
+            self._normal_status("Human's move" if self.human_to_move else "CPU's move")
 
     def _handle_human_press(self, ix):
         if self.anim_mode is not None:
@@ -459,7 +459,7 @@ class tictactoe:
         self.game_over = False
         self.starter = 1                 # Human starts on New
         self.human_to_move = True
-        self._normal_status("Human to move")
+        self._normal_status("Human's move")
         self._show_legends(True)
         self._lights_clear()
         try:
@@ -475,7 +475,7 @@ class tictactoe:
         self.game_over = False
         self.starter = 2 if self.starter == 1 else 1   # toggle starter
         self.human_to_move = (self.starter == 1)
-        self._normal_status("Human to move" if self.human_to_move else "CPU to move")
+        self._normal_status("Human's move" if self.human_to_move else "CPU's move")
         self._show_legends(True)
         self._lights_clear()
         try:

@@ -34,6 +34,8 @@ from adafruit_macropad import MacroPad
 ENC_DBL_MS = 600  # encoder double-press window (milliseconds)
 last_enc_down_ms = -1
 last_menu_idx = 0
+menu_anchor_pos = 0
+menu_anchor_idx = 0
 enc_exit_armed = False
 
 # ---- RAM debug helpers ----
@@ -92,6 +94,9 @@ def flush_inputs():
 # ---------- Setup hardware ----------
 macropad = MacroPad()
 macropad.pixels.fill((50, 0, 0))  # clear pads
+
+def _current_menu_index():
+    return (menu_anchor_idx + (macropad.encoder - menu_anchor_pos)) % len(game_names)
 
 # 12-tone palette
 tones = (196, 220, 247, 262, 294, 330, 349, 392, 440, 494, 523, 587)
@@ -155,6 +160,8 @@ def build_menu_group():
 menu_group, title_lbl, choice_lbl = build_menu_group()
 macropad.display.root_group = menu_group
 choice_lbl.text = game_names[0]
+menu_anchor_pos = macropad.encoder
+menu_anchor_idx = 0
 
 # ---------- Memory helpers ----------
 def _purge_game_modules():
@@ -170,20 +177,74 @@ def _purge_game_modules():
     gc.collect()
     ram_report("After purge")
 
-def _release_menu_assets():
+def _release_menu_assets(detach=False):
     global menu_group, title_lbl, choice_lbl
-    try:
-        macropad.display.root_group = None
-    except Exception:
-        pass
-    # Drop strong refs so GC can reclaim label glyph bitmaps, etc.
+    if detach:
+        try:
+            macropad.display.root_group = None
+        except Exception:
+            pass
     menu_group = None
     title_lbl = None
     choice_lbl = None
     gc.collect()
 
+def _return_to_menu(current_game_ref):
+    snap_pre_unload = ram_snapshot()  # existing
+
+    # 0) Failsafe: stop any tone the game left running
+    try:
+        if hasattr(macropad, "stop_tone"):
+            macropad.stop_tone()
+    except Exception:
+        pass
+
+    # 1) Ask the game to clean up (best effort)
+    try:
+        if current_game_ref and hasattr(current_game_ref, "cleanup"):
+            current_game_ref.cleanup()
+    except Exception as e:
+        print("cleanup error:", e)
+    current_game_ref = None
+
+    # 2) Launcher-level visual reset (in case game cleanup was incomplete)
+    try:
+        # LEDs: off + normalize auto_write so menu draws predictably
+        try: macropad.pixels.auto_write = True
+        except Exception: pass
+        macropad.pixels.fill((0, 0, 0))
+        try: macropad.pixels.show()
+        except Exception: pass
+    except Exception:
+        pass
+
+    # 3) Detach any leftover game group before we rebuild menu assets
+    try:
+        macropad.display.root_group = None
+    except Exception:
+        pass
+
+    # 4) Purge game modules and GC (your existing targeted purge)
+    _purge_game_modules()
+    gc.collect()
+
+    # 5) Recreate menu UI and show current selection immediately
+    _rebuild_menu_assets()
+    choice_lbl.text = game_names[last_menu_idx]
+    global menu_anchor_pos, menu_anchor_idx 
+    menu_anchor_pos = macropad.encoder
+    menu_anchor_idx = last_menu_idx
+    enter_menu()
+
+    ram_report_delta(snap_pre_unload, "After unloading game & purge")  # existing
+    ram_report("Returned to menu")                                     # existing
+    return current_game_ref
+
 def _rebuild_menu_assets():
     global menu_group, title_lbl, choice_lbl
+    global menu_anchor_pos, menu_anchor_idx
+    menu_anchor_pos = macropad.encoder
+    menu_anchor_idx = last_menu_idx
     menu_group, title_lbl, choice_lbl = build_menu_group()
     choice_lbl.text = game_names[last_menu_idx]
 
@@ -197,7 +258,7 @@ def enter_menu():
 
 def start_game_by_name(name):
     global last_menu_idx 
-    last_menu_idx = macropad.encoder % len(game_names)
+    #last_menu_idx = macropad.encoder % len(game_names)
     snap_before = ram_report(f"Before loading {name}")
 
     macropad.pixels.fill((0, 0, 0))
@@ -219,7 +280,7 @@ def start_game_by_name(name):
 
     snap_import = ram_snapshot()
 
-    _release_menu_assets()
+    _release_menu_assets(detach=False)
     _purge_game_modules()
     gc.collect()
 
@@ -280,54 +341,6 @@ def start_game_by_name(name):
 
     return game
 
-def _return_to_menu(current_game_ref):
-    snap_pre_unload = ram_snapshot()  # existing
-
-    # 0) Failsafe: stop any tone the game left running
-    try:
-        if hasattr(macropad, "stop_tone"):
-            macropad.stop_tone()
-    except Exception:
-        pass
-
-    # 1) Ask the game to clean up (best effort)
-    try:
-        if current_game_ref and hasattr(current_game_ref, "cleanup"):
-            current_game_ref.cleanup()
-    except Exception as e:
-        print("cleanup error:", e)
-    current_game_ref = None
-
-    # 2) Launcher-level visual reset (in case game cleanup was incomplete)
-    try:
-        # LEDs: off + normalize auto_write so menu draws predictably
-        try: macropad.pixels.auto_write = True
-        except Exception: pass
-        macropad.pixels.fill((0, 0, 0))
-        try: macropad.pixels.show()
-        except Exception: pass
-    except Exception:
-        pass
-
-    # 3) Detach any leftover game group before we rebuild menu assets
-    try:
-        macropad.display.root_group = None
-    except Exception:
-        pass
-
-    # 4) Purge game modules and GC (your existing targeted purge)
-    _purge_game_modules()
-    gc.collect()
-
-    # 5) Recreate menu UI and show current selection immediately
-    _rebuild_menu_assets()
-    choice_lbl.text = game_names[last_menu_idx]
-    enter_menu()
-
-    ram_report_delta(snap_pre_unload, "After unloading game & purge")  # existing
-    ram_report("Returned to menu")                                     # existing
-    return current_game_ref
-
 # ---------- Wipe ----------
 def play_global_wipe(mac):
     snap_wipe = ram_snapshot()
@@ -377,7 +390,9 @@ while True:
     pos = macropad.encoder
     if pos != last_encoder_position:
         if mode_menu:
-            idx = pos % len(game_names)
+            #idx = pos % len(game_names)
+            #choice_lbl.text = game_names[idx]
+            idx = _current_menu_index()
             choice_lbl.text = game_names[idx]
         else:
             if current_game and hasattr(current_game, "encoderChange"):
@@ -396,7 +411,9 @@ while True:
         if mode_menu and enc_pressed:
             mode_menu = False
             title_lbl.text = "Now Playing:"
-            sel = game_names[macropad.encoder % len(game_names)]
+            idx = _current_menu_index()
+            sel = game_names[idx]
+            last_menu_idx = idx
             current_game = start_game_by_name(sel)
             flush_inputs()
         elif not mode_menu:

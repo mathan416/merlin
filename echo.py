@@ -1,50 +1,126 @@
 # echo.py — Merlin-style memory sequence game for Adafruit MacroPad
 # Class: echo
-# Originally by Keith Tanner, Updates by Iain Bennett
-#
-# Echo is a memory game similar to Simon, where Merlin plays a sequence
-# of tones and lights, and the player must repeat the sequence exactly.
-# The sequence grows in length depending on the player’s chosen difficulty.
+# Originally by Keith Tanner, updates by Iain Bennett
+# Polished for Merlin Launcher compatibility by ChatGPT
 #
 # Controls:
-#   - At start, press keys 1–9 to set puzzle length (sequence size).
-#   - During play, repeat the sequence by pressing keys 1–9 in order.
-#   - Key 9 repeats the same sequence mid-game.
-#   - Key 11 starts a brand-new game.
-#   - Incorrect entries flash red and play an error tone.
-#   - Rotary encoder changes tempo (speed of playback).
+# • Keys 1–9 choose puzzle length at start (sequence size).
+# • During play, repeat the sequence (keys 1–9).
+# • Key 9 repeats the same sequence (hint) mid-game.
+# • Key 11 starts a brand-new game.
+# • Encoder changes tempo (BPM).
 #
-# CircuitPython 8.x / 9.x compatible
+# Notes:
+# • Exposes .group for the launcher (Merlin logo + prompts).
+# • Safe cleanup: tones off, LEDs off, display detached, GC.
+# • Clamped tempo: 60–300 BPM.
+# • No sub-loop blocking beyond tone durations; uses play_tone timing.
 
 import time
+import displayio
+import terminalio
 from random import randint
 
-# init
-# flash the square
-# choose a random config
-class echo():
+try:
+    from adafruit_display_text import label
+    HAVE_LABEL = True
+except Exception:
+    HAVE_LABEL = False
+
+
+class echo:
     def __init__(self, macropad, tones):
-        # shows how the keys affect others
-        self.tones = tones
-        self.color = 0xff0000
         self.macropad = macropad
-        self.gameMode ="select"
-        self.puzzle=[]
-        self.clear = [
-            0xf400fd,0xd516ed,0xb71edc,
-        0x9a21cb,0x7f21b8,0x651fa5,
-        0x4c1c91,0x34177d,0x1d1268,
-        0xff9900,0x000,0x00ff00]
-        self.tempo = 150 # bpm
+        self.tones = tones
+        self.gameMode = "select"   # "select", "playing", "ended"
+        self.puzzle = []
         self.player = []
-        #self.new_game()
+        self.tempo = 150  # BPM (clamped in encoderChange)
+        self._cleaned = False
+
+        # 12-button palette (same as your launcher wipe colors, last two are control hints)
+        self.clear = [
+            0xF400FD, 0xD516ED, 0xB71EDC,
+            0x9A21CB, 0x7F21B8, 0x651FA5,
+            0x4C1C91, 0x34177D, 0x1D1268,
+            0xFF9900, 0x000000, 0x00FF00,
+        ]
+
+        # ---- Optional display group for prompts/logo (launcher will show it if present) ----
+        self.group = displayio.Group()
+        try:
+            bmp = displayio.OnDiskBitmap("MerlinChrome.bmp")
+            tile = displayio.TileGrid(
+                bmp, pixel_shader=getattr(bmp, "pixel_shader", displayio.ColorConverter())
+            )
+            self.group.append(tile)
+        except Exception:
+            # No background is fine—text still shows
+            pass
+
+        self._title = None
+        self._line1 = None
+        self._line2 = None
+        if HAVE_LABEL:
+            self._title = label.Label(
+                terminalio.FONT, text="Echo", color=0xFFFFFF,
+                anchor_point=(0.5, 0.0),
+                anchored_position=(self._cx(macropad), 2)
+            )
+            self._line1 = label.Label(
+                terminalio.FONT, text="", color=0xFFFFFF,
+                anchor_point=(0.5, 0.0),
+                anchored_position=(self._cx(macropad), 31)
+            )
+            self._line2 = label.Label(
+                terminalio.FONT, text="", color=0xFFFFFF,
+                anchor_point=(0.5, 0.0),
+                anchored_position=(self._cx(macropad), 45)
+            )
+            self.group.append(self._title)
+            self.group.append(self._line1)
+            self.group.append(self._line2)
+
+        # Don’t auto-start; the launcher calls new_game()
+        # self.new_game()
+
+    # --- small helpers ---
+    def _cx(self, mac):
+        try:
+            return mac.display.width // 2
+        except Exception:
+            return 64
+
+    def _set_lines(self, l1="", l2=""):
+        if self._line1:
+            self._line1.text = l1
+        if self._line2:
+            self._line2.text = l2
+
+    # --- lifecycle ---
+    def new_game(self):
+        print("new Echo game")
+        self._safe_pixels_setup()
+        self.puzzle.clear()
+        self.player.clear()
+        self.gameMode = "select"
+        self.macropad.pixels.fill(0x000000)
+
+        # Intro sweep across 1–9 (keys 0..8)
+        for x in range(9):
+            self.macropad.pixels[x] = 0x000099
+            time.sleep(0.08)
+            self.macropad.pixels[x] = self.clear[x]
+
+        self._set_lines("Echo",
+                        "Length: 1 to 9")
 
     def cleanup(self):
         if getattr(self, "_cleaned", False):
             return
         self._cleaned = True
 
-        # 1) Stop any tone / speaker
+        # Stop tones
         try:
             if hasattr(self.macropad, "stop_tone"):
                 self.macropad.stop_tone()
@@ -57,15 +133,19 @@ class echo():
         except Exception:
             pass
 
-        # 2) Turn off LEDs
+        # LEDs off + normalize auto_write
         try:
             if hasattr(self.macropad, "pixels"):
+                try:
+                    self.macropad.pixels.auto_write = True
+                except Exception:
+                    pass
                 self.macropad.pixels.fill(0x000000)
                 self.macropad.pixels.show()
         except Exception:
             pass
 
-        # 3) Reset transient state so a fresh new_game() starts clean
+        # Reset state
         try:
             self.gameMode = "select"
             self.puzzle.clear()
@@ -73,170 +153,175 @@ class echo():
         except Exception:
             pass
 
-        # 4) GC sweep (cheap on CP, helps fragmentation)
+        # Detach group if the launcher doesn’t replace it first
+        try:
+            if getattr(self.macropad.display, "root_group", None) is self.group:
+                self.macropad.display.root_group = None
+        except Exception:
+            pass
+
+        # GC
         try:
             import gc
             gc.collect()
         except Exception:
             pass
-        
-    def new_game(self):
-        print ("new Echo game")
-        try:
-            self.macropad.pixels.auto_write = True
-        except AttributeError:
-            pass
-        self.macropad.pixels.brightness = 0.30
+
+    # --- core game flow ---
+    def start_game(self, length):
+        print("player has selected", length)
+        self.macropad.pixels.fill(0x000000)
+        time.sleep(0.2)
+
         self.puzzle.clear()
         self.player.clear()
-        self.gameMode ="select"
-        self.macropad.pixels.fill((0,0,0))
-        # run dots through every active button
-        for x in range (9):
-            self.macropad.pixels[x]=0x000099
-            time.sleep(0.1)
-            self.macropad.pixels[x]=self.clear[x]
-         
-        
-    def start_game(self, length):
-        print ("player has selected", length)
-        #clear and light up new/same buttons
-        self.macropad.pixels.fill((0,0,0))
-        time.sleep(0.5)
-        for x in range(length):
-            self.puzzle.append(randint(0, 8))
-        self.play_puzzle()
-        
-        
-        #self.macropad.pixels[9]=0xff9900
-        #self.macropad.pixels[11]=0x00ff00
-    def play_puzzle(self):
-        delay = 60/self.tempo
-        for x in self.puzzle:
-            self.macropad.pixels[x]=0x0a0014
-            self.macropad.play_tone(self.tones[x], delay)
-            self.macropad.pixels[x]=0x000000
-            time.sleep(0.05)
-        self.clear_board()
-        self.gameMode ="playing"
-        
-    def end_game(self):
-        self.gameMode ="ended"
-        self.clear_board()
-        print ("END GAME OF ECHO")
-        score = 0
-        # compare the two arrays
-        for x in range (len(self.puzzle)):
-            if self.puzzle[x]==self.player[x]:
-                score = score +1
-        
-        if score == len(self.puzzle):
-            # we have a weiner
-            self.winner()
-        else:
-            # you are loser
-            for x in range (score):
-                self.macropad.pixels[x]=0x009900
-            for x in range (score,len(self.puzzle)):
-                self.macropad.pixels[x]=0x990000
-        
-        # give score
-        # wait
-        
+        for _ in range(length):
+            self.puzzle.append(randint(0, 8))  # keys 0..8
 
+        self._set_lines(f"Now Playing",
+                        "Echo")
+        self.play_puzzle()
+
+    def play_puzzle(self):
+        delay = 60 / max(1, self.tempo)
+        for idx in self.puzzle:
+            self.macropad.pixels[idx] = 0x0A0014
+            self.macropad.play_tone(self.tones[idx], delay)
+            self.macropad.pixels[idx] = 0x000000
+            time.sleep(0.05)
+
+        self.clear_board()
+        self.gameMode = "playing"
 
     def same_game(self):
-        # show a square for fun
-        self.gameMode ="playing"
+        # Hint chime, then replay the puzzle
+        self.gameMode = "playing"
         self.clear_board()
-        self.macropad.play_tone(self.tones[4], 0.5)
-        self.macropad.play_tone(self.tones[2], 0.5)
-        self.macropad.pixels.fill((0,0,0))
-        time.sleep(0.5)
+        try:
+            self.macropad.play_tone(self.tones[4], 0.35)
+            self.macropad.play_tone(self.tones[2], 0.35)
+        except Exception:
+            pass
+        self.macropad.pixels.fill(0x000000)
+        time.sleep(0.25)
         self.player.clear()
-        #now play the puzzle
         self.play_puzzle()
-        
 
-    
-    def winner(self):
-        # do a winning thing
-        self.macropad.pixels.fill((0,200,0))
-        self.macropad.play_tone(self.tones[0], 0.2)
-        self.macropad.play_tone(self.tones[2], 0.2)
-        self.macropad.play_tone(self.tones[4], 0.2)
-        self.macropad.play_tone(self.tones[6], 0.2)
-        self.macropad.play_tone(self.tones[4], 0.2)
-        self.macropad.play_tone(self.tones[6], 0.5)
-        print ("you are a weiner")
+    def end_game(self):
+        self.gameMode = "ended"
         self.clear_board()
-        
-    
-    def clear_board(self):
-        # show the results
-        for x in range (len(self.clear)):
-            self.macropad.pixels[x] = self.clear[x]
-        
-        # make boop
-        #self.macropad.play_tone(self.tones[7], 0.5)
-        
+        print("END GAME OF ECHO")
 
-    def button(self,key):
-        #check to see if we're in selectionMode
-        if self.gameMode =="select":
-            if (key < 9):
-                self.macropad.play_tone(self.tones[key], 0.2)
-                self.macropad.pixels[key]=0x009900
-                self.selectionMode = False
-                self.start_game(key+1)
-            else: 
-                #ignore
-                pass
-        elif self.gameMode=="playing":
-            if key==9:
+        # Score the attempt (same length guarantee)
+        score = 0
+        for i in range(len(self.puzzle)):
+            if self.puzzle[i] == self.player[i]:
+                score += 1
+
+        if score == len(self.puzzle):
+            self.winner()
+        else:
+            # Visual score bar
+            for i in range(score):
+                self.macropad.pixels[i] = 0x009900
+            for i in range(score, len(self.puzzle)):
+                self.macropad.pixels[i] = 0x990000
+            self._set_lines("Echo",
+                            "Try again!")
+
+    def winner(self):
+        # Simple victorious arpeggio + green wash
+        self.macropad.pixels.fill((0, 200, 0))
+        seq = [0, 2, 4, 6, 4, 6]
+        for s in seq:
+            self.macropad.play_tone(self.tones[s], 0.18)
+        print("you are a winner")
+        self.clear_board()
+        self._set_lines("",
+                        "You Win!")
+
+    # --- UI/inputs ---
+    def clear_board(self):
+        for i in range(12):
+            self.macropad.pixels[i] = self.clear[i]
+
+    def button(self, key):
+        # Menu selection
+        if self.gameMode == "select":
+            if key < 9:
+                # Choose length 1..9
+                try:
+                    self.macropad.play_tone(self.tones[key], 0.18)
+                except Exception:
+                    pass
+                self.macropad.pixels[key] = 0x009900
+                self.start_game(key + 1)
+            else:
+                return
+
+        # Playing
+        elif self.gameMode == "playing":
+            if key == 9:
                 self.same_game()
-            elif key ==11:
+                return
+            if key == 11:
                 self.new_game()
-            elif key <9:
-                #print ("is",bin(self.state),", affects",bin(self.keys[key]))
-                #do the game thing
-                
+                return
+            if key < 9:
+                # Show feedback for this press
                 self.clear_board()
-                if key == self.puzzle[len(self.player)]:
-                    #correct
-                    self.macropad.pixels[key]=0x000099
-                    self.macropad.play_tone(self.tones[key], 0.2)
-                    
+                expect = self.puzzle[len(self.player)]
+                if key == expect:
+                    self.macropad.pixels[key] = 0x000099
+                    try:
+                        self.macropad.play_tone(self.tones[key], 0.16)
+                    except Exception:
+                        pass
                 else:
-                    self.macropad.pixels[key]=0x990000
-                    self.macropad.play_tone(100, 0.7)
-                    
+                    self.macropad.pixels[key] = 0x990000
+                    # A distinct error tone (constant freq)
+                    try:
+                        self.macropad.play_tone(110, 0.5)
+                    except Exception:
+                        pass
+
                 self.player.append(key)
 
                 if len(self.player) == len(self.puzzle):
-                    #game is done
-                    #evaluate
                     self.end_game()
-                #self.state = int(self.state)^int(self.keys[key])
-                #if (self.state == 0b111101111):
-                #    self.winner()
-                #else:
-                #    self.show_leds()
-                
-            else: # it's another button, weirdo
-                pass
+
+        # Ended — allow controls
         else:
-            #game is over, ignore all but game control buttons
-            if key==9:
+            if key == 9:
                 self.same_game()
-            elif key ==11:
+            elif key == 11:
                 self.new_game()
 
-    def encoderChange(self,newPosition, oldPosition):
-        self.tempo = self.tempo +(newPosition-oldPosition)*5
-        print ("new tempo",self.tempo,"bpm")
+    def encoderChange(self, newPosition, oldPosition):
+        delta = (newPosition - oldPosition) * 5
+        if delta == 0:
+            return
+        self.tempo = max(60, min(300, self.tempo + delta))
+        print("new tempo", self.tempo, "bpm")
+        if self.gameMode == "playing":
+            self._set_lines(f"Now Playing",
+                            "Echo")
+        elif self.gameMode == "select":
+            self._set_lines("Echo",
+                            f"Tempo: {self.tempo} BPM")
 
-# keypress
-# take the key number, pull the modifier array, apply
-# check for win
-# show result
+    def tick(self):
+        # No periodic logic needed; kept for launcher symmetry
+        pass
+
+    # --- internals ---
+    def _safe_pixels_setup(self):
+        try:
+            old = self.macropad.pixels.auto_write
+        except Exception:
+            old = True
+        try:
+            self.macropad.pixels.auto_write = True
+        except Exception:
+            pass
+        self.macropad.pixels.brightness = 0.30

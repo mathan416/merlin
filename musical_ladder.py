@@ -212,6 +212,11 @@ class musical_ladder:
                     self._lose()
                     return
 
+                # f we miss at the very bottom on the first group → LOSE immediately
+                if self.ladder_pos == 0:
+                    self._lose()
+                    return
+        
                 # Normal mid-ladder miss → step down and continue
                 self._advance_ladder(-1)
                 if self.mode != "running":
