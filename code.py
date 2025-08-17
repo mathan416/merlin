@@ -196,6 +196,7 @@ def enter_menu():
     macropad.display.root_group = menu_group
 
 def start_game_by_name(name):
+    global last_menu_idx 
     last_menu_idx = macropad.encoder % len(game_names)
     snap_before = ram_report(f"Before loading {name}")
 
