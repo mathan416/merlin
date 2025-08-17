@@ -199,11 +199,6 @@ def _release_menu_assets(detach=False):
     gc.collect()
 
 def _return_to_menu(current_game_ref):
-    # Ensure display resumes normal updates even if a game left it off
-    try:
-        macropad.display.auto_refresh = True
-    except Exception:
-        pass
     snap_pre_unload = ram_snapshot()  # existing
     # 0) Failsafe: stop any tone the game left running
     try:
@@ -220,6 +215,12 @@ def _return_to_menu(current_game_ref):
         print("cleanup error:", e)
     current_game_ref = None
 
+    # Ensure display resumes normal updates even if a game left it off
+    try:
+        macropad.display.auto_refresh = True
+    except Exception:
+        pass
+    
     # 2) Launcher-level visual reset (in case game cleanup was incomplete)
     try:
         # LEDs: off + normalize auto_write so menu draws predictably
@@ -247,6 +248,8 @@ def _return_to_menu(current_game_ref):
     global menu_anchor_pos, menu_anchor_idx 
     menu_anchor_pos = macropad.encoder
     menu_anchor_idx = last_menu_idx
+    last_encoder_position = macropad.encoder  # <-- re-baseline encoder for the menu loop
+    enc_exit_armed = False 
     enter_menu()
 
     ram_report_delta(snap_pre_unload, "After unloading game & purge")  # existing

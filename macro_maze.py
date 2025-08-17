@@ -15,7 +15,7 @@ except Exception:
 
 # ---------- Tunables ----------
 SCREEN_W, SCREEN_H = const(128), const(64)
-RAYS = const(56)                              # 2 px columns across 128 px
+RAYS = const(64)                              # 2 px columns across 128 px
 FOV = math.radians(60)
 MOVE_SPEED = 0.12
 TURN_SPEED = math.radians(10)
@@ -435,7 +435,7 @@ class _MacroMazeCore:
         self.did_splash = False
 
     def cleanup(self):
-        # 0) Persist settings if needed
+        # 0) Persist settings if needed (best-effort)
         try:
             if getattr(self, "_settings_dirty", False):
                 self._save_settings()
@@ -443,7 +443,7 @@ class _MacroMazeCore:
         except Exception:
             pass
 
-        # 1) Stop any held input + any tone
+        # 1) Stop any held inputs and any tone
         try:
             if hasattr(self, "pressed") and self.pressed:
                 self.pressed.clear()
@@ -455,38 +455,43 @@ class _MacroMazeCore:
         except Exception:
             pass
 
-        # 2) Display: blank, detach our group, restore refresh
+        # 2) Display: freeze, blank our framebuffer once, detach our group,
+        #    and restore the original auto_refresh state
         try:
             disp = getattr(self.macropad, "display", None)
             if disp:
-                # Avoid mid-update flicker
+                # Freeze redraws while we change things
                 try: disp.auto_refresh = False
                 except Exception: pass
 
-                # Best-effort blank frame (doesn’t allocate)
+                # Push a clean frame using our own bitmap (no new allocations)
                 try:
-                    _clear(self.bitmap)
+                    if getattr(self, "bitmap", None) is not None:
+                        _clear(self.bitmap)
                     disp.refresh(minimum_frames_per_second=0)
                 except Exception:
-                    pass
+                    # Some builds only accept refresh() without args
+                    try: disp.refresh()
+                    except Exception: pass
 
-                # Detach our group if we own the screen
+                # Detach ONLY if our group is the current root_group
                 try:
                     if getattr(disp, "root_group", None) is self.group:
                         disp.root_group = None
                 except Exception:
-                    try:
-                        disp.root_group = None
-                    except Exception:
-                        pass
+                    # Last-ditch: force None anyway
+                    try: disp.root_group = None
+                    except Exception: pass
 
-                # Restore original auto_refresh from __init__
-                try: disp.auto_refresh = getattr(self, "_orig_auto_refresh", True)
-                except Exception: pass
+                # Restore whatever the display’s auto_refresh was when we started
+                try:
+                    disp.auto_refresh = getattr(self, "_orig_auto_refresh", True)
+                except Exception:
+                    pass
         except Exception:
             pass
 
-        # 3) LEDs off
+        # 3) LEDs off (return control to launcher visuals)
         try:
             if hasattr(self.macropad, "pixels"):
                 self.macropad.pixels.fill((0, 0, 0))
@@ -494,7 +499,7 @@ class _MacroMazeCore:
         except Exception:
             pass
 
-        # 4) Drop large references so GC can reclaim RAM
+        # 4) Drop references so GC can reclaim RAM
         try:
             if hasattr(self, "_visited") and self._visited is not None:
                 self._visited.clear()
@@ -790,6 +795,16 @@ class _MacroMazeCore:
     def _start(self):
         _, cells = self.DIFFS[self.diff_idx]
         self._led_theme_start()
+        
+        # --- clear screen before entering GAME ---
+        # Ensure any MENU graphics are gone immediately, even before first tick.
+        try:
+            _clear(self.bitmap)
+            self.macropad.display.refresh(minimum_frames_per_second=0)
+        except Exception:
+            try: self.macropad.display.refresh()
+            except Exception: pass
+        
         self.maze, (self.cam_x, self.cam_y), self.exit_pos = _gen_maze(cells)
         self.cam_a = 0.0
         self.ray.set_maze(self.maze)
