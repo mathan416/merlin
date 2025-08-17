@@ -207,11 +207,11 @@ RETRO_TERMINAL = {
         "miss": 0x999999, "text": WHITE, "accent": 0x00FF00, "sunk": 0xFF0000
     },
     "ships": [
-        ("HMCS Bonaventure", 5),
-        ("HMCS Ontario",     4),
+        ("HMCS Algonquin",   5),
+        ("HMCS Restigouche", 4),
         ("HMCS Halifax",     3),
-        ("HMCS Victoria",    3),
-        ("HMCS Algonquin",   2)
+        ("HMCS Saskatchewan",3),
+        ("HMCS Objibwa",     2),
     ],
     "strings": {
         "place_prompt": "DEPLOY FLEET",
