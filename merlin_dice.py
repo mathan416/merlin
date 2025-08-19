@@ -311,7 +311,6 @@ class merlin_dice:
         self.spinning = False
         self.spin_t0 = 0.0
         self.spin_t1 = 0.0
-        self.spinner_led_idx = 0
 
         # Result/ack screen
         self.awaiting_ack = False
@@ -342,7 +341,6 @@ class merlin_dice:
 
         # LED UX state
         self._key_flash_until = {}
-        self._result_until = 0
         self._update_leds_idle()
 
     # Launcher API
@@ -356,7 +354,6 @@ class merlin_dice:
         self._redraw_static()
         self._update_prompts()
         self._key_flash_until.clear()
-        self._result_until = 0
         self._update_leds_idle()
 
     def cleanup(self):
@@ -494,12 +491,6 @@ class merlin_dice:
         # ----- Awaiting acknowledgement: freeze LEDs/scene -----
         if self.awaiting_ack:
             return
-
-        # ----- Idle LED management / key flashes -----
-        tnow = time.monotonic()
-        if getattr(self, "_result_until", 0) and tnow > self._result_until:
-            self._result_until = 0
-            self._update_leds_idle()
 
         if getattr(self, "_key_flash_until", None):
             if self._key_flash_until:
@@ -989,5 +980,5 @@ class merlin_dice:
         t = time.monotonic()
         if not hasattr(self, "_key_flash_until"): self._key_flash_until = {}
         self._key_flash_until[key_index] = t + dur
-        if not self.spinning and not getattr(self, "_result_until", 0) and not self.awaiting_ack:
+        if not self.spinning and not self.awaiting_ack:
             self._apply_key_flash_frame()
