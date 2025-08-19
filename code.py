@@ -112,29 +112,34 @@ tones = (196, 220, 247, 262, 294, 330, 349, 392, 440, 494, 523, 587)
 
 # ---------- Lazy-load registry instead of pre-import factories ----------
 GAMES_REG = [
-    ("Battleship",     "battleship",    "Battleship",    {}),
-    ("Blackjack 13",   "blackjack13",   "blackjack13",   {}),
-    ("Echo",           "echo",          "echo",          {}),
-    ("Hit or Miss",    "hit_or_miss",   "hit_or_miss",   {}),
-    ("Hi/Lo",          "hi_lo",         "hi_lo",         {}),
-    ("Hot Potato",     "hot_potato",    "hot_potato",    {}),
-    ("Macro Maze",     "macro_maze",    "maze3d",        {}),
-    ("Magic Square",   "magic_square",  "magic_square",  {}),
-    ("Match It",       "match_it",      "match_it",      {}),
-    ("Mindbender",     "mindbender",    "mindbender",    {}),
-    ("Mixed Game Bag", "mixed_game_bag","mix_bag",       {}),
-    ("Music Machine",  "music_machine", "music_machine", {}),
-    ("Musical Ladder", "musical_ladder","musical_ladder",{}),
-    ("Pair Off",       "pair_off",      "pair_off",      {}),
-    ("Patterns",       "patterns",      "patterns",      {}),
-    ("Simon",          "simon",         "simon",         {}),
-    ("Snake",          "snake",         "snake",         {"snake2": False}),
-    ("Snake II",       "snake",         "snake",         {"snake2": True}),
-    ("Tempo",          "tempo",         "tempo",         {"tones": tones}),
-    ("Three Shells",   "three_shells",  "three_shells",  {}),
-    ("Tic Tac Toe",    "tictactoe",     "tictactoe",     {}),
+    ("Battleship",     "battleship",        "Battleship",    {}),
+    ("Blackjack 13",   "blackjack13",       "blackjack13",   {}),
+    ("Echo",           "echo",              "echo",          {}),
+    ("Hit or Miss",    "hit_or_miss",       "hit_or_miss",   {}),
+    ("Hi/Lo",          "hi_lo",             "hi_lo",         {}),
+    ("Hot Potato",     "hot_potato",        "hot_potato",    {}),
+    ("Macro Maze",     "macro_maze",        "maze3d",        {}),
+    ("Magic Square",   "magic_square",      "magic_square",  {}),
+    ("Match It",       "match_it",          "match_it",      {}),
+    ("Merlin Dice",    "merlin_dice",       "merlin_dice",   {}),
+    ("Mindbender",     "mindbender",        "mindbender",    {}),
+    ("Mixed Game Bag", "mixed_game_bag",    "mix_bag",       {}),
+    ("Music Machine",  "music_machine",     "music_machine", {}),
+    ("Musical Ladder", "musical_ladder",    "musical_ladder",{}),
+    ("Pair Off",       "pair_off",          "pair_off",      {}),
+    ("Patterns",       "patterns",          "patterns",      {}),
+    ("Simon",          "simon",             "simon",         {}),
+    ("Snake",          "snake",             "snake",         {"snake2": False}),
+    ("Snake II",       "snake",             "snake",         {"snake2": True}),
+    ("Tempo",          "tempo",             "tempo",         {"tones": tones}),
+    ("Three Shells",   "three_shells",      "three_shells",  {}),
+    ("Tic Tac Toe",    "tictactoe",         "tictactoe",     {}),
+    ("Whack-A-Mole",   "whack_a_mole",       "whack_a_mole", {}),
+    ("70s Demo Scene", "vector_dreams_bag", "vector_dreams_bag", {}),
     ("80s Demo Scene", "sinclair_demo_bag", "sinclair_demo_bag", {}),
     ("90s Demo Scene", "90s_demoscene",     "demoscene",     {}),
+    ("00s Demo Scene", "demoscene_2000s",   "shader_bag",    {}),
+
 ]
 game_names = [n for (n, _, _, _) in GAMES_REG]
 
@@ -246,6 +251,7 @@ def _return_to_menu(current_game_ref):
     _rebuild_menu_assets()
     choice_lbl.text = game_names[last_menu_idx]
     global menu_anchor_pos, menu_anchor_idx 
+    global last_encoder_position, enc_exit_armed 
     menu_anchor_pos = macropad.encoder
     menu_anchor_idx = last_menu_idx
     last_encoder_position = macropad.encoder  # <-- re-baseline encoder for the menu loop
@@ -282,7 +288,124 @@ def _freeze_display_frame():
         macropad.display.root_group = None
     except Exception:
         pass
-    
+
+# ---- Better diagnostics when constructing a game ----
+# ---- Better diagnostics when constructing a game ----
+def _construct_with_diagnostics(mod, class_name, macropad, tones, kwargs0):
+    """
+    Try several constructor signatures for the game's class and print detailed diagnostics
+    if construction fails. Returns an instance on success, otherwise raises TypeError with
+    the last error and useful module metadata.
+
+    Tries, in order:
+      cls(macropad, tones, **kwargs)
+      cls(macropad, **kwargs)
+      cls(macropad, tones)
+      cls(macropad)
+      cls()
+    """
+    # Fallback-friendly imports (CircuitPython may lack full traceback)
+    try:
+        import traceback as _tb
+    except Exception:
+        _tb = None
+    try:
+        import sys as _sys
+    except Exception:
+        _sys = None
+
+    # Resolve class
+    try:
+        cls = getattr(mod, class_name)
+    except Exception as e:
+        mfile = getattr(mod, "__file__", "?")
+        raise TypeError("Module '{}' ({}) has no attribute '{}': {}".format(
+            getattr(mod, "__name__", "?"), mfile, class_name, e
+        ))
+
+    # Prepare attempts
+    attempts = [
+        ("cls(macropad, tones, **kwargs)",    lambda kw: cls(macropad, tones, **kw)),
+        ("cls(macropad, **kwargs)",           lambda kw: cls(macropad, **kw)),
+        ("cls(macropad, tones)",              lambda kw: cls(macropad, tones)),
+        ("cls(macropad)",                     lambda kw: cls(macropad)),
+        ("cls()",                             lambda kw: cls()),
+    ]
+
+    last_err = None
+    last_desc = None
+    kwargs = dict(kwargs0) if kwargs0 else {}
+
+    # Try each signature
+    for desc, attempt in attempts:
+        try:
+            inst = attempt(kwargs)
+            print("[ctor] OK with:", desc)
+            return inst
+        except TypeError as e:
+            last_err, last_desc = e, desc
+            print("[ctor] TypeError during", desc, "->", e)
+            # Print a traceback if available
+            if _tb:
+                try:
+                    _tb.print_exception(e, e, e.__traceback__)
+                except Exception:
+                    pass
+            elif _sys and hasattr(_sys, "print_exception"):
+                try:
+                    _sys.print_exception(e)
+                except Exception:
+                    pass
+        except MemoryError as e:
+            # Memory is special: emit hint and re-raise immediately (heap likely corrupted)
+            print("[ctor] MemoryError during", desc, "->", e)
+            print("[ctor] Hint: free display root_group, GC twice, and ensure large bitmaps aren't alive.")
+            raise
+        except Exception as e:
+            last_err, last_desc = e, desc
+            print("[ctor] Exception during", desc, "->", e)
+            if _tb:
+                try:
+                    _tb.print_exception(e, e, e.__traceback__)
+                except Exception:
+                    pass
+            elif _sys and hasattr(_sys, "print_exception"):
+                try:
+                    _sys.print_exception(e)
+                except Exception:
+                    pass
+
+    # If all attempts failed, raise a rich error with module context
+    mfile = getattr(mod, "__file__", "?")
+    mname = getattr(mod, "__name__", "?")
+    # Trim export list to keep message small
+    try:
+        exports = [n for n in dir(mod) if not n.startswith("_")]
+    except Exception:
+        exports = []
+    exports_str = ", ".join(exports[:32]) + (" ..." if len(exports) > 32 else "")
+
+    raise TypeError(
+        "Couldn't construct game '{cn}' from module '{mn}' ({mf}).\n"
+        "Last attempt: {desc}\n"
+        "Last error: {et}: {em}\n"
+        "Module exports: {ex}\n"
+        "Tips:\n"
+        "  • Check the class __init__ signature and any required parameters.\n"
+        "  • Ensure __init__ doesn't touch hardware that isn't ready yet (display root_group, pixels, tones).\n"
+        "  • If you rely on module-level constants (e.g., PROMPT_Y1/PROMPT_Y2), make sure they are defined.\n"
+        "  • Try constructing the class with fewer arguments to isolate the failure."
+        .format(
+            cn=class_name,
+            mn=mname,
+            mf=mfile,
+            desc=(last_desc or "?"),
+            et=(type(last_err).__name__ if last_err else "?"),
+            em=(str(last_err) if last_err else "?"),
+            ex=exports_str
+        )
+    )
+
 # ---------- Menu/Game switching ----------
 def enter_menu():
     try: macropad.pixels.auto_write = True
@@ -337,31 +460,21 @@ def start_game_by_name(name):
         _aggressive_free_before_import()
         mod = __import__(module_name)
     ram_report_delta(snap_import, f"Imported module {module_name}")
+    if module_name == "70s_demoscene":
+        print("DEBUG 70s name:", getattr(mod, "__name__", None))
+        print("DEBUG 70s file:", getattr(mod, "__file__", None))
+        print("DEBUG 70s exports:", [n for n in dir(mod) if not n.startswith("_")])
+    if module_name == "vector_dreams_bag":
+        print("DEBUG 70s name:", getattr(mod, "__name__", None))
+        print("DEBUG 70s file:", getattr(mod, "__file__", None))
+        print("DEBUG 70s exports:", [n for n in dir(mod) if not n.startswith("_")])
 
-    # --- construct (same as before) ---
+    # --- construct (with rich diagnostics) ---
     snap_construct = ram_snapshot()
-    cls = getattr(mod, class_name)
     if module_name == "snake" and "snake2" in kwargs:
         kwargs = {"wraparound": bool(kwargs["snake2"])}
-    game = None
-    ctor_err = None
     gc.collect()
-    for attempt in (
-        lambda: cls(macropad, tones, **kwargs),
-        lambda: cls(macropad, **kwargs),
-        lambda: cls(macropad, tones),
-        lambda: cls(macropad),
-        lambda: cls(),
-    ):
-        try:
-            game = attempt()
-            break
-        except TypeError as e:
-            ctor_err = e
-        except Exception as e:
-            ctor_err = e
-    if game is None:
-        raise TypeError(f"Couldn't construct game {class_name}. Last error: {ctor_err}")
+    game = _construct_with_diagnostics(mod, class_name, macropad, tones, kwargs)
 
     ram_report_delta(snap_construct, f"Constructed {class_name}")
 
@@ -564,4 +677,3 @@ while True:
                         current_game.button_up(key)
             except Exception as e:
                 print("button error:", e)
-                
