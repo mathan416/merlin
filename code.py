@@ -118,6 +118,7 @@ GAMES_REG = [
     ("Hit or Miss",    "hit_or_miss",       "hit_or_miss",   {}),
     ("Hi/Lo",          "hi_lo",             "hi_lo",         {}),
     ("Hot Potato",     "hot_potato",        "hot_potato",    {}),
+    ("Lights Out",     "lights_out",        "lights_out",    {}),
     ("Macro Maze",     "macro_maze",        "maze3d",        {}),
     ("Magic Square",   "magic_square",      "magic_square",  {}),
     ("Match It",       "match_it",          "match_it",      {}),
