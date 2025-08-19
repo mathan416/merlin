@@ -251,11 +251,6 @@ def _scale_color(color, f):
     if b > 255: b = 255
     return (r << 16) | (g << 8) | b
 
-def _cos01(x):
-    if x <= 0: return 1.0
-    if x >= 1: return 0.0
-    return 0.5 * (1.0 + math.cos(math.pi * x))
-
 def _mix_color(c0, c1, t):
     """Linear blend between two 0xRRGGBB colors."""
     if t <= 0: return c0 & 0xFFFFFF
