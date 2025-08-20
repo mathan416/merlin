@@ -112,6 +112,7 @@ tones = (196, 220, 247, 262, 294, 330, 349, 392, 440, 494, 523, 587)
 
 # ---------- Lazy-load registry instead of pre-import factories ----------
 GAMES_REG = [
+    ("Asteroids-Lite", "asteroids_lite",    "asteroids_lite",{}),
     ("Battleship",     "battleship",        "Battleship",    {}),
     ("Blackjack 13",   "blackjack13",       "blackjack13",   {}),
     ("Echo",           "echo",              "echo",          {}),

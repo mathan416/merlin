@@ -357,8 +357,86 @@ class merlin_dice:
         self._update_leds_idle()
 
     def cleanup(self):
-        set_leds(self.macropad, color=0x000000)
-        self._save_settings()
+        """Restore LEDs/display, save settings, and free large buffers to reclaim RAM."""
+        # --- Persist settings first ---
+        try:
+            self._save_settings()
+        except Exception:
+            pass
+
+        # --- Quiesce animations/state so tick() won't redraw after cleanup ---
+        self.spinning = False
+        self.awaiting_ack = False
+        self._cube_prev_edges = []
+        self._crit_t0 = None
+        try:
+            if hasattr(self, "_key_flash_until") and isinstance(self._key_flash_until, dict):
+                self._key_flash_until.clear()
+        except Exception:
+            pass
+
+        # --- LEDs: blank and reset local caches ---
+        try:
+            if hasattr(self, "macropad") and hasattr(self.macropad, "pixels"):
+                # Use direct write to avoid any fade logic
+                self.macropad.pixels.auto_write = False
+                self.macropad.pixels.fill(0x000000)
+                self.macropad.pixels.show()
+                self.macropad.pixels.auto_write = True
+            # Reset cached LED buffer used for fades
+            self._led_buf = [0x000000] * 12
+        except Exception:
+            pass
+
+        # --- Clear screen contents (don’t release display yet) ---
+        try:
+            if getattr(self, "bmp", None) is not None:
+                # Full framebuffer wipe
+                clear(self.bmp)
+        except Exception:
+            pass
+
+        # --- Restore display refresh; detach our group if it's currently shown ---
+        try:
+            disp = None
+            if getattr(self, "display", None) is not None:
+                disp = self.display
+            elif getattr(self, "macropad", None) is not None and hasattr(self.macropad, "display"):
+                disp = self.macropad.display
+
+            if disp is not None:
+                # If our group is the root, drop it so the launcher can attach its own
+                if getattr(disp, "root_group", None) is self.group:
+                    disp.root_group = None
+                # Re-enable auto refresh for the launcher/UI
+                disp.auto_refresh = True
+        except Exception:
+            pass
+
+        # --- Free heavy display objects and references so GC can reclaim RAM ---
+        try:
+            if getattr(self, "group", None) is not None:
+                # Remove children (TileGrid, labels, etc.)
+                try:
+                    while len(self.group):
+                        self.group.pop()
+                except Exception:
+                    # Some Group implementations don’t support len() the same way—best effort.
+                    pass
+        except Exception:
+            pass
+
+        # Drop big refs
+        self.tg = None
+        self.bmp = None
+        self.pal = None
+        self.lbl_btm = None
+
+        # --- Final GC hint ---
+        try:
+            gc.collect()
+        except Exception:
+            pass
 
     def button(self, *args, **kwargs):
         k = None

@@ -1,4 +1,6 @@
 # lights_out.py — LED-only Lights Out for Adafruit MacroPad
+# Sound: uses ONLY macropad.play_tone()
+#
 # Menu:   K3=Solo, K4=Versus, K5=Co-op  (pulsing green)
 # Game:   Board K0..K8 (3×3); K9=Menu; K11=New; K10 disabled (always off)
 # Screen:
@@ -60,16 +62,8 @@ class lights_out:
         if self.tones is None:
             self.tones = DEFAULT_TONES
 
-        # --- Sound (non-blocking queue) ---
-        self._audio_ok = bool(self.mac and hasattr(self.mac, "start_tone") and hasattr(self.mac, "stop_tone"))
-        self._snd_q, self._snd_until, self._snd_playing = [], 0.0, False
-        try:
-            if self._audio_ok and hasattr(self.mac, "speaker"):
-                self.mac.speaker.enable = True
-                if hasattr(self.mac.speaker, "volume"):
-                    self.mac.speaker.volume = 0.4
-        except Exception:
-            pass
+        # --- Sound: ONLY play_tone ---
+        self._has_play_tone = bool(self.mac and hasattr(self.mac, "play_tone"))
 
         # --- Display header: Merlin logo + text at y=40, y=53 ---
         self.group = displayio.Group()
@@ -115,7 +109,6 @@ class lights_out:
         self._to_menu()
 
     def tick(self):
-        self._tick_audio()
         if self.state == "menu":
             self._render_menu_leds()
         elif self.state in ("playing", "won"):
@@ -182,10 +175,66 @@ class lights_out:
             self._update_header_ingame()
 
     def cleanup(self):
-        self._snd_q.clear()
-        self._stop_tone_safe()
+        """Blank LEDs, restore display, and free heavy refs. (No audio APIs used here.)"""
+        # --- LEDS: blank and reset local pulse timers/cache ---
         try:
-            self.mac.pixels.fill((0,0,0)); self.mac.pixels.show()
+            if hasattr(self, "mac") and hasattr(self.mac, "pixels"):
+                prev_auto = getattr(self.mac.pixels, "auto_write", True)
+                try: self.mac.pixels.auto_write = False
+                except Exception: pass
+                try:
+                    self.mac.pixels.fill((0, 0, 0))
+                    self.mac.pixels.show()
+                except Exception:
+                    pass
+                try: self.mac.pixels.auto_write = prev_auto
+                except Exception: pass
+        except Exception:
+            pass
+        # Push press timestamps far in the past so pulses don't resume if reused
+        try:
+            if hasattr(self, "_press_t"):
+                for k in self._press_t: self._press_t[k] = -999.0
+        except Exception:
+            pass
+
+        # --- DISPLAY: detach our group and restore auto_refresh for launcher ---
+        try:
+            disp = getattr(self.mac, "display", None)
+            if disp is not None:
+                if getattr(disp, "root_group", None) is self.group:
+                    disp.root_group = None
+                try:
+                    disp.auto_refresh = True
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # --- RELEASE heavy references so GC can reclaim RAM ---
+        try:
+            if getattr(self, "group", None) is not None:
+                try:
+                    while len(self.group):
+                        self.group.pop()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # Drop object refs
+        self.logo_group = None
+        self.lbl1 = None
+        self.lbl2 = None
+
+        # Optionally reset simple game state
+        self.state = "menu"
+        self.board = [0] * 9
+
+        # --- Encourage garbage collection ---
+        try:
+            import gc
+            gc.collect()
         except Exception:
             pass
 
@@ -197,7 +246,7 @@ class lights_out:
         self.p_moves = [0, 0]
         self.player = 0
         self.winner_last = None
-        # Keep scoreboard when returning to menu? Reset here for a fresh match:
+        # Reset scoreboard when returning to menu for a fresh match:
         self.score = [0, 0]
         try:
             self.mac.pixels.fill((0,0,0)); self.mac.pixels.show()
@@ -215,7 +264,7 @@ class lights_out:
         # Create solvable puzzle by applying random valid presses to an empty board
         for _ in range(18):
             k = random.randrange(9)     # only board keys
-            self._apply_press(k, count_move=False)
+            self._apply_press(k)
         t0 = time.monotonic() - 2.0
         for k in range(12): self._press_t[k] = t0
         self._update_header_ingame()
@@ -231,7 +280,7 @@ class lights_out:
         if c < COLS-1: out.append(r*COLS + (c+1))  # right
         return out
 
-    def _apply_press(self, k, count_move=True):
+    def _apply_press(self, k):
         for i in self._neighbors(k):
             self.board[i] ^= 1
             self._press_t[i] = time.monotonic()
@@ -277,11 +326,7 @@ class lights_out:
 
     def _update_header_won_generic(self):
         if not HAVE_LABEL: return
-        # Keep it simple & clear
-        if self.mode == MODE_COOP:
-            self.lbl1.text = "You Win!  Moves: {}".format(self.moves)
-        else:
-            self.lbl1.text = "You Win!  Moves: {}".format(self.moves)
+        self.lbl1.text = "You Win!  Moves: {}".format(self.moves)
         self.lbl2.text = "Press K9 for Menu"
 
     def _update_header_won_versus(self):
@@ -354,47 +399,35 @@ class lights_out:
         x = dt / FADE_DUR
         return 0.5 * (1.0 + math.cos(x * math.pi))  # 1→0 cosine
 
-    # ---------- Sound ----------
+    # ---------- Sound (ONLY play_tone) ----------
     def _tone_for_key(self, key):
         if 0 <= key < len(self.tones): return int(self.tones[key])
         return DEFAULT_TONES[key % 12]
 
-    def _enqueue(self, seq):
-        if not self._audio_ok: return
-        self._snd_q.extend(seq)
-        if not self._snd_playing: self._advance_audio()
-
-    def _advance_audio(self):
-        if not self._audio_ok: return
-        if not self._snd_q:
-            self._snd_playing = False; self._stop_tone_safe(); return
-        f, d = self._snd_q.pop(0)
-        self._snd_playing = True
-        self._snd_until = time.monotonic() + float(d)
-        if f and f > 0:
-            try: self.mac.start_tone(int(f))
-            except Exception: pass
-        else:
-            self._stop_tone_safe()
-
-    def _tick_audio(self):
-        if not self._audio_ok or not self._snd_playing: return
-        if time.monotonic() >= self._snd_until:
-            self._stop_tone_safe()
-            if self._snd_q:
-                nf, _ = self._snd_q[0]
-                if nf > 0: self._snd_q.insert(0, (0, 0.01))
-            self._advance_audio()
-
-    def _stop_tone_safe(self):
-        try:
-            if self._audio_ok: self.mac.stop_tone()
-        except Exception:
-            pass
+    def _play_tone(self, f, d):
+        if not self._has_play_tone: return
+        if f and d and f > 0 and d > 0:
+            try:
+                self.mac.play_tone(int(f), float(d))
+            except Exception:
+                pass
 
     # ---- Cues ----
-    def _beep(self, f, d=0.05): self._enqueue([(int(f), float(d))])
+    def _beep(self, f, d=0.05):
+        self._play_tone(f, d)
+
     def _cue_shuffle(self):
-        self._enqueue([(self._tone_for_key(9), 0.04), (self._tone_for_key(6), 0.04), (self._tone_for_key(3), 0.06)])
+        # short descending triad
+        seq = [(self._tone_for_key(9), 0.04),
+               (self._tone_for_key(6), 0.04),
+               (self._tone_for_key(3), 0.06)]
+        for f, d in seq:
+            self._play_tone(f, d)
+
     def _cue_win(self):
-        self._enqueue([(self._tone_for_key(8), 0.07), (self._tone_for_key(10), 0.07), (self._tone_for_key(11), 0.12)])
+        # short ascending triad
+        seq = [(self._tone_for_key(8), 0.07),
+               (self._tone_for_key(10), 0.07),
+               (self._tone_for_key(11), 0.12)]
+        for f, d in seq:
+            self._play_tone(f, d)
