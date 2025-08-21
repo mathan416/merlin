@@ -1,4 +1,5 @@
 # sinclair_demo_bag.py — Sinclair Demo Bag for Merlin Launcher (MacroPad / CircuitPython 9.x)
+# Written by Iain Bennett — 2025
 #
 # Inspired by simple but mesmerizing programs you could type into
 # the Timex Sinclair 1000 / Sinclair ZX81 — my first computer. Back then,

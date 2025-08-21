@@ -1,4 +1,47 @@
-# shader_bag.py — 2000s "Club Shader Bag" for Merlin Launcher (MacroPad / CircuitPython 9.x)
+# shader_bag.py — 2000s "Club Shader Bag" for Merlin Launcher
+# Target: Adafruit MacroPad (CircuitPython 9.x)
+# Written by Iain Bennett — 2025
+#
+# Overview:
+#   A retro shader “demo scene” bag inspired by 2000s club visuals.
+#   Renders classic plasma, spectrum bars, tunnel warp, and matrix rain
+#   effects on the 128×64 monochrome OLED. Paired with synchronized
+#   MacroPad LED mappings for extra vibe.
+#
+# Controls:
+#   • Encoder → cycle menu items
+#   • Encoder press (single) → select demo
+#   • Encoder press (double) → exit demo
+#   • K3 (←)  → tweak speed/tempo down
+#   • K5 (→)  → tweak speed/tempo up
+#   • K7 (Fire) → shuffle / randomize parameters
+#
+# Visual Modes:
+#   • Plasma     — oldschool blobby plasma with LED rainbow copper
+#   • Spectrum   — beat-driven bars, tempo-sync’d LED spectrum mapper
+#   • Tunnel     — twisting warp rings, LEDs breathe with depth bands
+#   • Matrix     — digital rain (bitmap + LEDs, flicker-free persistence)
+#
+# LED Mapping:
+#   • Auto-detects 3×4 layout (MacroPad 12 keys)
+#   • Plasma: rainbow copper stripes
+#   • Spectrum: LED bar graph (green→yellow→red) with kick “pump”
+#   • Tunnel: depth-band breathing colors
+#   • Matrix: green code rain (LED trails, flicker-free)
+#   • Menu:   all LEDs off; highlights active controls
+#
+# Display:
+#   • Menu: title, "Select:", demo name, and hint line
+#   • HUD overlays in demo modes (tempo, exit hint, etc.)
+#
+# Sound:
+#   • No audio output (visualizer only; LED “pump” mirrors kick env)
+#
+# Integration:
+#   • Fully compatible with Merlin Launcher
+#   • Defensive use of bitmaptools (clamped fills/lines)
+#   • Cleanup() restores LEDs, display group, and stops tones
+
 import time, math, random
 import displayio, terminalio
 import bitmaptools

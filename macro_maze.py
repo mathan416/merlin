@@ -1,7 +1,59 @@
-# maze3d.py — Macro Maze (launcher-compatible)
-# Works with Merlin Launcher (CircuitPython 9.x)
-# Exposes class `maze3d` with .group, .new_game(), .tick(), .button(), .cleanup()
-# Encoder: single press exits (handled by launcher)
+# maze3d.py — Macro Maze (3D Raycast Maze for Adafruit MacroPad)
+# Target: CircuitPython 9.x — fully Merlin Launcher compatible
+# Written by Iain Bennett — 2025
+#
+# Overview:
+#   Classic 3D maze crawler using a lightweight raycaster on the 128×64 OLED.
+#   Procedurally generates solvable mazes (odd sizes: 9×9, 13×13, 17×17).
+#   Features minimap, difficulty selection, and persistent settings.
+#
+# Exposes:
+#   • class maze3d(macropad)
+#       .group         — display group (set as root_group by launcher)
+#       .new_game()    — reset to menu
+#       .tick()        — update loop (called by launcher)
+#       .button(k)     — handle key press
+#       .button_up(k)  — handle key release
+#       .encoderChange — (unused, passthrough)
+#       .encoder_button — (unused, launcher handles exit)
+#       .cleanup()     — teardown and restore launcher state
+#
+# Controls:
+#   • MENU: 
+#       – K1 ↑ / K7 ↓ → change difficulty (EASY, MED, HARD)
+#       – K9 → enter SETTINGS
+#       – K11 → START game
+#   • SETTINGS:
+#       – K1 ↑ → toggle SFX
+#       – K3 ← / K5 → → change D-pad LED colour
+#       – K9 → back to MENU
+#   • GAME:
+#       – K1 ↑ / K7 ↓ → move forward/back
+#       – K3 ← / K5 → → turn left/right
+#       – K9 → return to MENU
+#       – K11 → toggle minimap
+#   • Encoder:
+#       – Single press → exit to launcher (default Merlin behaviour)
+#
+# Display:
+#   • MENU: centered difficulty labels, selected row highlighted
+#   • SETTINGS: “SFX” (ON/OFF), “COLOUR” with single-letter colour code
+#   • GAME: live raycast view; optional minimap overlay
+#   • WIN: “YOU GOT OUT” splash before returning to menu
+#
+# LEDs:
+#   • MENU: dim grey background, D-pad in theme colour, K9 amber (Settings), K11 green (Start)
+#   • SETTINGS: only arrows lit (← / → in theme colour, ↑ for SFX), K9 amber (Back)
+#   • GAME: D-pad in theme colour, K9 amber (Menu), K11 cyan (Minimap)
+#   • Startup: themed LED “ring” animation
+#
+# Sound:
+#   • Uses macropad.play_tone() exclusively (movement ticks, bumps, win beeps)
+#   • Toggleable in SETTINGS
+#
+# Persistence:
+#   • Settings saved to /macro_maze_settings.json
+#   • SFX enabled/disabled, D-pad LED colour, last difficulty
 
 import math, random, time, json
 import displayio, bitmaptools, terminalio

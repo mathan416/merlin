@@ -1,4 +1,5 @@
 # lights_out.py — LED-only Lights Out for Adafruit MacroPad
+# Written by Iain Bennett — 2025
 # Sound: uses ONLY macropad.play_tone()
 #
 # Menu:   K3=Solo, K4=Versus, K5=Co-op  (pulsing green)

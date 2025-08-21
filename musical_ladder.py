@@ -1,4 +1,6 @@
 # 🎼 MUSICAL LADDER — for Adafruit MacroPad (CircuitPython 8.x / 9.x)
+# Written by Iain Bennett — 2025
+# Inspired by the original Master Merlin “Musical Ladder” game.
 #
 # HOW TO PLAY
 # ─────────────────────────────────────────────────────────────────────────────

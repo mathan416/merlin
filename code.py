@@ -133,6 +133,7 @@ GAMES_REG = [
     ("Simon",          "simon",             "simon",         {}),
     ("Snake",          "snake",             "snake",         {"snake2": False}),
     ("Snake II",       "snake",             "snake",         {"snake2": True}),
+    ("Spin the Bottle", "spin_the_bottle", "spin_bottle", {}),
     ("Tempo",          "tempo",             "tempo",         {"tones": tones}),
     ("Three Shells",   "three_shells",      "three_shells",  {}),
     ("Tic Tac Toe",    "tictactoe",         "tictactoe",     {}),

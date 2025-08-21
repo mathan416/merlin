@@ -1,5 +1,50 @@
-# ---------- Main ----------
-# merlin_dice.py — Merlin Dice (CircuitPython 9.x, Merlin Launcher)
+# merlin_dice.py — Merlin Dice for Adafruit MacroPad
+# Target: CircuitPython 9.x — Merlin Launcher compatible
+# Written by Iain Bennett — 2025
+#
+# Overview
+#   Animated dice roller with a demoscene wireframe cube, themed LED UX, and
+#   Advantage/Disadvantage modes. Fast, incremental drawing on a 128×64 OLED.
+#
+# Exposed API (launcher uses these)
+#   • class merlin_dice(macropad=None, display=None)
+#       .group         — display group to attach as root_group
+#       .new_game()    — reset UI/state for (re)entry
+#       .tick(now=...) — advance animations without blocking
+#       .button(...)   — handle key presses (see Controls)
+#       .cleanup()     — save settings, blank LEDs, free buffers
+#
+# Controls (key numbers = MacroPad indices)
+#   • K1/K7  (↑/↓): quick-pick previous / next common die (d4,6,8,10,12,20)
+#   • K3/K5  (←/→): decrement / increment sides (bounded 2..20)
+#   • K9     (SPIN): roll (starts/acknowledges result)
+#   • K11    (MODE): cycle visual themes
+#   • K2     (ADV):  toggle roll mode: Norm → Adv → Dis
+#   • Encoder press: exit to launcher (default Merlin behavior)
+#
+# Display
+#   • Idle: centered rotating cube (landed at 45°), bottom status line shows
+#           “D{N}  {Theme} {Norm|Adv|Dis}”.
+#   • Rolling: cube animates (ease-out); bottom shows “Rolling…”.
+#   • Result: large 7-segment digits; for Adv/Dis shows two framed boxes
+#             (A/B) with an arrow pointing to the chosen value.
+#
+# LEDs
+#   • Themed palette per mode (base/accent/highlight).
+#   • Idle: D-pad dim base; SPIN accent; MODE/ADV highlight.
+#   • Rolling: cosine “wave” chase around the 12 keys (non-blocking).
+#   • Result: chosen value index lights from theme; SPIN/MODE highlighted.
+#   • d20 special: non-blocking green (nat 20) / red (nat 1) pulse.
+#
+# Persistence
+#   • Saves settings to /merlin_dice_settings.json:
+#       sides, theme index, roll_mode (0=Norm,1=Adv,2=Dis)
+#
+# Implementation notes
+#   • Uses displayio + bitmaptools for a 2-color framebuffer (fast region fills).
+#   • Incremental cube redraw (erase previous edges only) within a clipped band.
+#   • LED crossfades use cosine easing; falls back to cached buffer if needed.
+#   • Random helpers tolerate limited _random APIs across ports.
 
 import math, time, json, gc
 import displayio, bitmaptools, terminalio
