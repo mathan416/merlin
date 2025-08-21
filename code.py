@@ -114,11 +114,13 @@ tones = (196, 220, 247, 262, 294, 330, 349, 392, 440, 494, 523, 587)
 GAMES_REG = [
     ("Asteroids-Lite", "asteroids_lite",    "asteroids_lite",{}),
     ("Battleship",     "battleship",        "Battleship",    {}),
+    ("Beat Trainer",   "beat_trainer",      "beat_trainer",  {}),
     ("Blackjack 13",   "blackjack13",       "blackjack13",   {}),
     ("Echo",           "echo",              "echo",          {}),
     ("Hit or Miss",    "hit_or_miss",       "hit_or_miss",   {}),
     ("Hi/Lo",          "hi_lo",             "hi_lo",         {}),
     ("Hot Potato",     "hot_potato",        "hot_potato",    {}),
+    ("Knights Tour",   "knights_tour",      "knights_tour",  {}),
     ("Lights Out",     "lights_out",        "lights_out",    {}),
     ("Macro Maze",     "macro_maze",        "maze3d",        {}),
     ("Magic Square",   "magic_square",      "magic_square",  {}),
