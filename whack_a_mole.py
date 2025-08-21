@@ -1,9 +1,42 @@
 # whack_a_mole.py — Whack-A-Mole for Adafruit MacroPad (CircuitPython 9.x)
-# Keys (K0..K11) light up as moles; OLED shows compact HUD only.
+# Compatible with Merlin Launcher (self-contained UI class).
+# Written by Iain Bennett — 2025
 #
 # Public API:
 #   class whack_a_mole(macropad=None)
-#     .group, .new_game(mode=None), .tick(), .button(k, pressed=None), .cleanup()
+#       .group         → top-level displayio.Group for launcher
+#       .new_game(mode=None) → reset state to mode menu
+#       .tick()        → advance timers, spawn/expire moles, redraw HUD/LEDs
+#       .button(k, pressed=True) → handle key input (launcher-style)
+#       .encoderChange(new, old) → knob support (settings menu only)
+#       .cleanup()     → blank LEDs on exit
+#
+# States:
+#   "mode"     → title menu; choose 1P, 2P, or Settings
+#   "settings" → adjust tunables (spawn speed, decoys, cap, penalty, timer, colour)
+#   "swap"     → versus only; waits for player to press any key
+#   "playing"  → active game; keys light as moles
+#   "gameover" → results screen; K9 returns to menu
+#
+# Controls:
+#   Mode:   K3=1P, K5=2P, K10=Settings
+#   Settings: K9=– , K11=+ , K10=Back
+#   Play:   Hit lit keys to score; miss → optional penalty
+#   Game Over: K9=Back to menu
+#
+# Gameplay:
+#   - Random moles appear on 12 keys; players must hit before expiry.
+#   - Decoys (brief flashes) may appear at higher levels.
+#   - Combos: rapid hits within combo window increase score multiplier.
+#   - Solo mode: timed run (default 90s, or Infinity).
+#   - Versus mode: each player gets alternating levels; higher score wins.
+#
+# Implementation notes:
+#   - HUD: compact 2-line text at y=34,48; optional MerlinChrome.bmp logo behind.
+#   - Levels: base pacing defined in BASE_LEVELS, then tweaked per settings.
+#   - LEDs: anti-flicker shadow buffer, atomic updates, per-frame throttle.
+#   - Sound: simple tones via MacroPad play_tone (with safe fallbacks).
+#   - Settings persist to /whack_a_mole_settings.json if json+storage available.
 
 import time, random
 import displayio, terminalio

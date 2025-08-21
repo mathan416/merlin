@@ -126,6 +126,7 @@ GAMES_REG = [
     ("Magic Square",   "magic_square",      "magic_square",  {}),
     ("Match It",       "match_it",          "match_it",      {}),
     ("Merlin Dice",    "merlin_dice",       "merlin_dice",   {}),
+    ("Merlin Rogue",   "rogue",             "rogue",         {}),
     ("Mindbender",     "mindbender",        "mindbender",    {}),
     ("Mixed Game Bag", "mixed_game_bag",    "mix_bag",       {}),
     ("Music Machine",  "music_machine",     "music_machine", {}),
