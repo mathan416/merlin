@@ -22,7 +22,7 @@
 # Originally by Keith Tanner
 # Updated and extended by Iain Bennett
 
-print("Loading Merlin")
+print("Merlin Fusion\nLoading\n")
 import time
 import displayio
 import terminalio
@@ -119,14 +119,17 @@ GAMES_REG = [
     ("Echo",           "echo",              "echo",          {}),
     ("Hit or Miss",    "hit_or_miss",       "hit_or_miss",   {}),
     ("Hi/Lo",          "hi_lo",             "hi_lo",         {}),
+    ("Horseracing",    "horseracing",       "horseracing",   {}),
     ("Hot Potato",     "hot_potato",        "hot_potato",    {}),
     ("Knights Tour",   "knights_tour",      "knights_tour",  {}),
+    ("LED Pinball",    "led_pinball",       "led_pinball",   {}),
     ("Lights Out",     "lights_out",        "lights_out",    {}),
     ("Macro Maze",     "macro_maze",        "maze3d",        {}),
     ("Magic Square",   "magic_square",      "magic_square",  {}),
     ("Match It",       "match_it",          "match_it",      {}),
+    ("Merlin Adventure","adventure",        "adventure",     {}),
     ("Merlin Dice",    "merlin_dice",       "merlin_dice",   {}),
-    ("Merlin Rogue",   "rogue",             "rogue",         {}),
+    ("Merlin Rogue",   "minirogue",         "minirogue",     {}),
     ("Mindbender",     "mindbender",        "mindbender",    {}),
     ("Mixed Game Bag", "mixed_game_bag",    "mix_bag",       {}),
     ("Music Machine",  "music_machine",     "music_machine", {}),
@@ -135,6 +138,7 @@ GAMES_REG = [
     ("Patterns",       "patterns",          "patterns",      {}),
     ("Simon",          "simon",             "simon",         {}),
     ("Snake",          "snake",             "snake",         {"snake2": False}),
+    ("Slots",          "slot_reels",        "slot_reels",    {}),
     ("Snake II",       "snake",             "snake",         {"snake2": True}),
     ("Spin the Bottle","spin_the_bottle",   "spin_bottle",   {}),
     ("Tempo",          "tempo",             "tempo",         {"tones": tones}),
@@ -146,8 +150,8 @@ GAMES_REG = [
     ("80s Demo Scene", "sinclair_demo_bag", "sinclair_demo_bag", {}),
     ("90s Demo Scene", "90s_demoscene",     "demoscene",     {}),
     ("00s Demo Scene", "demoscene_2000s",   "shader_bag",    {}),
-
 ]
+#    ("Pac Man",        "pacman",            "pacman",        {}),
 game_names = [n for (n, _, _, _) in GAMES_REG]
 
 SKIP_WIPE = {"Echo"}
