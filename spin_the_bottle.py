@@ -1,39 +1,45 @@
-# ---------------------------------------------------------------------------
 # spin_the_bottle.py — Spin the Bottle
+# CircuitPython 9.x — Merlin Launcher Compatible (Adafruit MacroPad RP2040)
 # Written by Iain Bennett — 2025
-# A classic “party game” adaptation for the Adafruit MacroPad, written as a
-# self-contained UI for the Merlin Launcher (CircuitPython 9.x).
 #
-# Features:
-# - 10 “seats” arranged around the MacroPad’s 12-key layout (keys 0–11,
-#   skipping diagonals). LED colors drift in rainbow idle mode.
-# - Toggle participation by tapping a seat key while idle. Excluded seats
-#   show dim white; included seats show colored rainbow.
-# - Start a spin with K4 (short press) or K7. Hold K4 for >1s to toggle
-#   “Blind Mode” (LEDs blacked out during spin).
-# - During spin, LEDs chase in a trail effect with acceleration, cruising,
-#   and random deceleration until the pointer lands.
-# - Winner is revealed first as a big “K#” for 3 seconds, then shrinks to
-#   a small “Winner: K#” prompt with option to spin again or toggle seats.
-# - Includes tones: ticking sound scales with spin speed, final ding for
-#   the winner.
+# OVERVIEW
+# ────────────────────────────────────────────────
+# A modern Merlin Fusion take on the classic party game.
+# Ten “seats” are arranged around the MacroPad’s 12-key layout, with idle
+# rainbow-drifting LEDs and toggleable participation. Players can spin the
+# bottle with K4 or K7, and suspense builds with acceleration, random
+# deceleration, and even an optional “Blind Mode” where the LEDs black out
+# during the spin.
 #
-# Integration:
-# - Fully launcher-compatible: exposes .group, .new_game(), .tick(),
+# GAMEPLAY
+# ────────────────────────────────────────────────
+# • Toggle seats: tap a key (excluded = dim white, included = rainbow).
+# • Spin:
+#     – K4 short press → start spin
+#     – K7 press       → start spin
+#     – K4 long press  → toggle Blind Mode
+# • Spin phases: acceleration → cruise → random deceleration → land.
+# • Winner reveal:
+#     – First: big “K#” for 3 seconds
+#     – Then: small “Winner: K#” with replay/toggle prompts
+# • Sounds: ticking tones speed with the spin; final “ding” marks the winner.
+#
+# FEATURES
+# ────────────────────────────────────────────────
+# • Launcher-compatible API: .group, .new_game(), .tick(),
 #   .button(), .button_up(), .cleanup().
-# - Safe use of const for literal ints; bitmaptools drawing guarded with
-#   clamps for robustness.
-# - Defensive cleanup clears LEDs, tones, and display state for launcher
-#   handoff.
+# • Idle rainbow drift animation across participating seats.
+# • Trail LED effect during spin (bright → dim tail).
+# • Blind Mode hides LEDs during spin for added suspense.
+# • Defensive cleanup: clears LEDs, tones, and display safely before exit.
+# • Optional MerlinChrome.bmp logo overlay if present.
 #
-# Notes:
-# - SHOW_LOGO flag allows MerlinChrome.bmp logo overlay (if present).
-# - Uses “blind mode” for suspense: players must watch the physical LEDs
-#   fade in/out instead of being guided by trail.
-# - Written for clarity and resilience: failures in bitmaptools or hardware
-#   gracefully degrade without crashing.
-#
-# ---------------------------------------------------------------------------
+# NOTES
+# ────────────────────────────────────────────────
+# • Uses const for hardware-safe literal ints.
+# • Bitmaptools drawing is wrapped in defensive clamps and fallbacks.
+# • Written for resilience: hardware/firmware errors degrade gracefully.
+
 import math, time, random
 import displayio, terminalio
 import bitmaptools

@@ -1,11 +1,50 @@
+# ---------------------------------------------------------------------------
 # slot_reels.py — 3-Reel Slots (Merlin Launcher compatible, layered redraw)
-# CircuitPython 9.x / Adafruit MacroPad 128×64 (monochrome OLED)
+# ---------------------------------------------------------------------------
+# Classic 3-reel slot machine game for the Adafruit MacroPad, designed for
+# Merlin Launcher on CircuitPython 9.x (128×64 monochrome OLED).
+# Written by Iain Bennett — 2025
 #
-# - Background bitmap holds static reel frame & borders.
-# - Foreground bitmap holds symbols; cleared/redrawn each tick.
-# - Title screen shows logo cleanly (gameplay layers hidden).
-# - K3/K4/K5 stop reels 0/1/2 respectively.
-# - Labels centered via anchor_point/anchored_position.
+# Core Features
+#   • Two-layer display system:
+#       - Background bitmap: static reel frame & borders
+#       - Foreground bitmap: glyph symbols (cleared & redrawn each spin)
+#   • Title screen: clean logo presentation (gameplay layers hidden)
+#   • Simple 6-symbol set: A, B, C, 7, $, *
+#   • Three stop buttons: K3 / K4 / K5 control reels 0 / 1 / 2
+#   • Credit system with payouts:
+#       - Three of a kind = 20 (7’s), 10 ($), or 5 (others)
+#       - Two of a kind   = 2
+#   • Bank updated after every spin, winnings displayed on result screen
+#
+# Display & HUD
+#   • Symbols drawn from compact 5×7 glyphs, scaled ×3 and centered
+#   • Reel frames aligned with pixel-precise borders
+#   • Title, idle, spin, and result prompts displayed via anchored labels
+#   • Logo (MerlinChrome.bmp) shown behind reels in TITLE/IDLE states
+#
+# LED Feedback
+#   • While spinning: keys K3/K4/K5 animate with rotating red→orange→yellow pulse
+#   • On result: first 3 keys glow green (win) or red (loss) with breathing effect
+#   • Idle: LEDs off for clarity
+#
+# Implementation Notes
+#   • Uses dual Bitmaps (BG + FG) for efficient redraws
+#   • Transparent foreground palette enables overlay of reel symbols
+#   • _LedSmooth wrapper provides anti-flicker updates (rate-limited show)
+#   • Minimal allocations during gameplay; symbols blitted each frame
+#
+# Controls (MacroPad)
+#   K3  = Stop Reel 1      K4  = Stop Reel 2      K5  = Stop Reel 3
+#   Any key in TITLE → IDLE
+#   Any key in IDLE  → Begin spin (cost 1 credit)
+#   After RESULT     → Any key resets back to IDLE
+#
+# Assets / Deps
+#   • MerlinChrome.bmp (optional logo)
+#   • adafruit_display_text.label (HUD prompts)
+#   • bitmaptools (optional; autodetected for blitting)
+# ---------------------------------------------------------------------------
 
 import time, math, random
 import displayio, terminalio

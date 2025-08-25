@@ -1,32 +1,36 @@
-# 🎼 MUSICAL LADDER — for Adafruit MacroPad (CircuitPython 8.x / 9.x)
+# musical_ladder.py — 🎼 Musical Ladder
+# CircuitPython 8.x / 9.x — Merlin Launcher Compatible (Adafruit MacroPad RP2040)
 # Written by Iain Bennett — 2025
-# Inspired by the original Master Merlin “Musical Ladder” game.
+# Inspired by the original *Master Merlin* “Musical Ladder” game.
 #
+# ───────────────
 # HOW TO PLAY
-# ─────────────────────────────────────────────────────────────────────────────
-# ░ Climb the Solfège Scale: DO → RE → MI → FA → SO → LA → TI → DO
-# ░ Each “step” is a group of flashing LEDs. Strike them *all* in time!
-# ░ Windows shrink as skill increases — Merlin-style 1…9 difficulty levels.
-# ░ If you succeed, you ascend one rung up the ladder toward the TOP DO.
-# ░ Miss the window? You slip down, but never below the first DO.
-# ░ Reach the top and you WIN with a triumphant scale & LED flourish!
-# ░ Fail at the bottom and you LOSE with a sour crash and red fade.
+# ───────────────
+# • Climb the solfège scale: DO → RE → MI → FA → SO → LA → TI → DO
+# • Each “step” is a flashing LED group. Strike *all* keys in time!
+# • Windows shrink as difficulty rises (Merlin-style levels 1–9).
+# • Success moves you up the ladder; misses drop you down (but never below the first DO).
+# • Reach the top DO = WIN (triumphant scale & LED flourish).
+# • Fail at the bottom = LOSE (sour tones & red fade).
 #
-# THE VIBE
-# ─────────────────────────────────────────────────────────────────────────────
-# ░ A game of reflex and rhythm, where memory meets music.
-# ░ Every press is rewarded with a note of the scale and solfège lyric,
-#   making your climb *sing* as you play.
-# ░ It feels like an Amiga demoscene tune fused with “Simon” & “Merlin.”
-# ░ LED gradients pulse, tones climb, and victory feels earned.
+# ───────────────
+# FEATURES
+# ───────────────
+# • Rhythm/reflex game fused with melody — every press plays its note and lyric.
+# • Nine skill levels scale timing windows and group sizes.
+# • OLED prompts:
+#     – Menu: “Pick a level” / “1 to 9”
+#     – In-game: solfège lyrics line-by-line as you climb
+#     – Win/Lose: celebratory or defeat messages + replay hints
+# • LED effects:
+#     – Gradient color coding (green → red across K0–K8).
+#     – Animated press flashes, countdown cues, win sweeps, and lose fades.
+# • Sound: macropad.play_tone only (scale notes, beeps, triads, jingles).
+# • Controls:
+#     – K0–K8: play groups
+#     – K9:   return to level select
+#     – K11:  replay last skill
 #
-# License:
-#   Released under the CC0 1.0 Universal (Public Domain Dedication).
-#   You can copy, modify, distribute, and perform the work, even for commercial
-#   purposes, all without asking permission. Attribution is appreciated but not
-#   required.
-#
-# ─────────────────────────────────────────────────────────────────────────────
 import time
 from random import randint
 

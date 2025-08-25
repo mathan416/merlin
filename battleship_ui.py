@@ -1,4 +1,5 @@
 # battleship_ui.py — UI & rendering for MacroPad Battleship
+# Written by Iain Bennett — 2025
 # ---------------------------------------------------------
 # This module owns everything you SEE and most things you HEAR:
 # it builds and manages the display groups, bitmaps, palettes,

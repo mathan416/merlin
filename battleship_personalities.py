@@ -1,4 +1,5 @@
 # battleship_personalities.py — Battleship “personality packs” for Adafruit MacroPad
+# Written by Iain Bennett — 2025
 # -----------------------------------------------------------------------------------
 # Defines color palettes, UI themes, and sound/personality profiles for the Battleship game.
 # A "personality" describes only the presentation layer (colors, labels, sound cues) and 

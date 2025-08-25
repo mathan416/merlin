@@ -1,43 +1,47 @@
-# whack_a_mole.py — Whack-A-Mole for Adafruit MacroPad (CircuitPython 9.x)
-# Compatible with Merlin Launcher (self-contained UI class).
+# ---------------------------------------------------------------------------
+# whack_a_mole.py — Whack-A-Mole for Adafruit MacroPad
+# CircuitPython 9.x — Merlin Launcher Compatible
 # Written by Iain Bennett — 2025
 #
-# Public API:
-#   class whack_a_mole(macropad=None)
-#       .group         → top-level displayio.Group for launcher
-#       .new_game(mode=None) → reset state to mode menu
-#       .tick()        → advance timers, spawn/expire moles, redraw HUD/LEDs
-#       .button(k, pressed=True) → handle key input (launcher-style)
-#       .encoderChange(new, old) → knob support (settings menu only)
-#       .cleanup()     → blank LEDs on exit
+# OVERVIEW
+# ────────────────────────────────────────────────
+# ░ A fast-paced reflex game inspired by arcade “mole” cabinets and Merlin.
+# ░ Random moles pop up on the MacroPad’s 12 keys — hit them before they vanish!
+# ░ Solo mode = timed challenge. Versus mode = alternating levels with score duel.
+# ░ Includes difficulty scaling, optional decoys, combos, penalties, and themes.
 #
-# States:
-#   "mode"     → title menu; choose 1P, 2P, or Settings
-#   "settings" → adjust tunables (spawn speed, decoys, cap, penalty, timer, colour)
-#   "swap"     → versus only; waits for player to press any key
-#   "playing"  → active game; keys light as moles
-#   "gameover" → results screen; K9 returns to menu
+# STATES
+# ────────────────────────────────────────────────
+# • "mode"     → Title menu; pick 1P, 2P, or enter Settings.
+# • "settings" → Adjust tunables (speed, decoys, cap, penalty, timer, colour).
+# • "swap"     → Versus only; waits for the next player to press a key.
+# • "playing"  → Active game; keys light as moles (hit to score).
+# • "gameover" → Results screen; K9 returns to menu.
 #
-# Controls:
-#   Mode:   K3=1P, K5=2P, K10=Settings
-#   Settings: K9=– , K11=+ , K10=Back
-#   Play:   Hit lit keys to score; miss → optional penalty
-#   Game Over: K9=Back to menu
+# CONTROLS
+# ────────────────────────────────────────────────
+# • Mode Menu:   K3 = 1P   |   K5 = 2P   |   K10 = Settings
+# • Settings:    K9 = –    |   K11 = +   |   K10 = Back
+# • In-Play:     Hit lit keys to score; miss may trigger penalty
+# • Game Over:   K9 = Back to menu
 #
-# Gameplay:
-#   - Random moles appear on 12 keys; players must hit before expiry.
-#   - Decoys (brief flashes) may appear at higher levels.
-#   - Combos: rapid hits within combo window increase score multiplier.
-#   - Solo mode: timed run (default 90s, or Infinity).
-#   - Versus mode: each player gets alternating levels; higher score wins.
+# GAMEPLAY
+# ────────────────────────────────────────────────
+# ░ Randomly timed moles light keys for a short window; hit before expiry.
+# ░ Decoys (flashes) appear at higher levels to trick players.
+# ░ Combos: rapid consecutive hits multiply score.
+# ░ Solo: timed run (90s default, or Infinity if set).
+# ░ Versus: two players alternate segments; higher score wins the match.
 #
-# Implementation notes:
-#   - HUD: compact 2-line text at y=34,48; optional MerlinChrome.bmp logo behind.
-#   - Levels: base pacing defined in BASE_LEVELS, then tweaked per settings.
-#   - LEDs: anti-flicker shadow buffer, atomic updates, per-frame throttle.
-#   - Sound: simple tones via MacroPad play_tone (with safe fallbacks).
-#   - Settings persist to /whack_a_mole_settings.json if json+storage available.
-
+# FEATURES / TECH NOTES
+# ────────────────────────────────────────────────
+# • HUD: compact 2-line text (y=34,48); optional MerlinChrome.bmp logo backdrop.
+# • Levels: baseline pacing defined in BASE_LEVELS; tweaked via Settings.
+# • LEDs: anti-flicker shadow buffer, atomic map updates, 30 Hz throttle.
+# • Sound: minimal tones via MacroPad play_tone (safe fallbacks included).
+# • Settings persistence: stored in /whack_a_mole_settings.json if json+storage available.
+#
+# ---------------------------------------------------------------------------
 import time, random
 import displayio, terminalio
 from micropython import const
@@ -105,6 +109,7 @@ COL_WHITE_DIM  = (30, 30, 30)
 
 # Settings color themes (applied to LEVELS at runtime)
 THEMES = {
+    "Brown":  [(139,  69, 19)]*6,
     "Cyan":   [( 32,  32,255)]*6,
     "Green":  [( 64, 255, 64)]*6,
     "Orange": [(255, 128, 32)]*6,

@@ -1,20 +1,50 @@
+# ---------------------------------------------------------------------------
 # led_pinball.py — LED Pinball Simulation (Merlin Launcher compatible)
-# CircuitPython 9.x / Adafruit MacroPad 128×64 (monochrome OLED)
+# ---------------------------------------------------------------------------
+# Fast, single-ball pinball played entirely on the Adafruit MacroPad’s 12 LEDs,
+# with a minimal OLED “playfield.” Designed for Merlin Launcher on
+# CircuitPython 9.x (128×64 monochrome OLED).
+# Written by Iain Bennett — 2025
 #
-# Layout:
-# - Lane (ball travel): K0..K8 (left→right)  ← full board
-# - Left flipper:  K9
-# - Drain:         K10
-# - Right flipper: K11
+# Core Features
+#   • Title screen with Merlin chrome logo (loaded once via OnDiskBitmap)
+#   • Real-time flippers (K9 left / K11 right) and a dedicated drain key (K10)
+#   • Single-ball lane travel across K0..K8 with temporary “angled” shots (±2 lanes)
+#   • Anti-“infinite volley”: rising fatigue fail chance on repeated edge flips
+#   • Drop-to-drain animation when a flip is missed (lane → flipper → drain)
+#   • Score updates are label-only (no full framebuffer redraw)
 #
-# Features:
-# - Title screen with Merlin logo (OnDiskBitmap) shown once; toggled via TileGrid.hidden.
-# - Ball "drop" animation to drain (K0→K6→K7 or K5→K8→K7) on missed flip.
-# - LED updates are cadence-locked (60 Hz) to prevent flicker.
-# - OLED “bumpers” are round dots (not slashes).
-# - Score updates modify only the score label (no full-screen redraw).
-# - Anti-“infinite volley”: per-edge “fatigue” fail chance rises with consecutive flips.
-
+# Display & HUD
+#   • OLED shows a framed mini-playfield with round “bumper” dots
+#   • Title/ready/play/drop/drain states each paint a lightweight static frame
+#   • Score text updates the label only for responsiveness
+#
+# LED Feedback (60 Hz, flicker-free)
+#   • Lane LEDs are dim background; the current ball lane is bright/pulsed
+#   • Flippers glow; pulse while held, dim when idle
+#   • Drain key highlights during drop animation; strong cue while in DRAIN state
+#   • Cadence-locked LED updates via a single .show() per frame (_LedSmooth)
+#
+# Implementation Notes
+#   • Optional acceleration: bitmaptools.fill_region() when available
+#   • Logo TileGrid is created once, toggled by .hidden (only visible on title)
+#   • Game loop steps ball movement on its own cadence; LEDs are frame-timed
+#   • Minimal allocations during play; incremental drawing to avoid tearing
+#
+# Controls (MacroPad)
+#   ┌───────────────┐
+#   │   K1          │   Move ball lane highlight (game logic driven)
+#   │K3     K5      │
+#   │   K7          │
+#   └───────────────┘
+#   K9   = Left Flipper        K10  = Drain / New Ball (after drain)
+#   K11  = Right Flipper       Any key = Dismiss Title → READY
+#
+# Assets / Deps
+#   • MerlinChrome.bmp (optional logo, same folder)
+#   • adafruit_display_text.label (HUD labels)
+#   • bitmaptools (optional; autodetected)
+# ---------------------------------------------------------------------------
 import time, math, random
 import displayio, terminalio
 from micropython import const

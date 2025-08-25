@@ -1,26 +1,33 @@
-# code.py — Merlin Emulator Game Launcher for Adafruit MacroPad (CircuitPython 9.x)
+# code.py — Merlin Fusion Game Launcher
+# CircuitPython 9.x / Adafruit MacroPad RP2040 (128×64 mono OLED)
+# Originally by Keith Tanner
+# Updated and extended by Iain Bennett — 2025
 #
-# This script runs on an Adafruit MacroPad to provide a menu and runtime
-# environment for a collection of Merlin-inspired games. Games are stored as
-# separate Python modules and are loaded dynamically to conserve RAM.
+# Purpose:
+# - Provides the main menu and runtime environment for the Merlin Fusion collection
+#   of Merlin-inspired and retro-style games.
+# - Dynamically loads each game module on demand to conserve the MacroPad’s limited RAM.
 #
-# Key Features:
-#   • Menu-driven selection of games via the MacroPad rotary encoder.
-#   • Lazy-loading of game modules with targeted unloading to free memory.
-#   • RAM usage monitoring with per-stage and delta reporting for debugging.
-#   • Optional LED “wipe” animation when starting most games.
-#   • Robust import and construction logic to support varying game class signatures.
-#   • Graceful cleanup when returning to the menu from a game.
+# Features:
+# - Menu-driven selection of games via the rotary encoder.
+# - Lazy-loading and targeted unloading of modules for memory efficiency.
+# - RAM usage diagnostics with per-stage and delta reporting.
+# - Optional LED “wipe” animation when launching games.
+# - Rich construction diagnostics to support multiple game class signatures.
+# - Graceful cleanup and reset when returning to menu.
 #
 # Controls:
-#   • Rotate encoder to scroll through menu items.
-#   • Press encoder to start the selected game.
-#   • Press encoder during a game to return to the menu (most games).
-#   • Tempo opts into a double-press to exit using the encoder.
-#   • Keys 0–11 are passed to the active game’s button handlers.
+# - Encoder rotate → Scroll menu items
+# - Encoder press:
+#     • In menu: Start selected game
+#     • In game: Return to menu (or double-press exit for games like Tempo)
+# - Keys 0–11 are forwarded to the active game’s button handlers.
 #
-# Originally by Keith Tanner
-# Updated and extended by Iain Bennett
+# Notes:
+# - Uses MerlinChrome.bmp as menu/logo background.
+# - Double garbage-collection and display detachment techniques maximize free heap
+#   before loading large game modules.
+# - Includes robust error handling for construction, imports, and cleanup steps.
 
 print("Merlin Fusion\nLoading\n")
 import time
@@ -112,6 +119,7 @@ tones = (196, 220, 247, 262, 294, 330, 349, 392, 440, 494, 523, 587)
 
 # ---------- Lazy-load registry instead of pre-import factories ----------
 GAMES_REG = [
+    ("Pac Man",        "pacman",            "pacman",        {}),
     ("Asteroids-Lite", "asteroids_lite",    "asteroids_lite",{}),
     ("Battleship",     "battleship",        "Battleship",    {}),
     ("Beat Trainer",   "beat_trainer",      "beat_trainer",  {}),
@@ -151,7 +159,6 @@ GAMES_REG = [
     ("90s Demo Scene", "90s_demoscene",     "demoscene",     {}),
     ("00s Demo Scene", "demoscene_2000s",   "shader_bag",    {}),
 ]
-#    ("Pac Man",        "pacman",            "pacman",        {}),
 game_names = [n for (n, _, _, _) in GAMES_REG]
 
 SKIP_WIPE = {"Echo"}

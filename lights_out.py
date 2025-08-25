@@ -1,16 +1,30 @@
-# lights_out.py — LED-only Lights Out for Adafruit MacroPad
+# lights_out.py — LED-Only Lights Out
+# CircuitPython 9.x / Adafruit MacroPad RP2040 (Merlin Launcher Compatible)
 # Written by Iain Bennett — 2025
-# Sound: uses ONLY macropad.play_tone()
 #
-# Menu:   K3=Solo, K4=Versus, K5=Co-op  (pulsing green)
-# Game:   Board K0..K8 (3×3); K9=Menu; K11=New; K10 disabled (always off)
-# Screen:
-#   • Menu (y=40): "Solo  Versus  Co-op" ; y=53 blank
-#   • Solo/Co-op (playing): y=40 "Moves: N" ; y=53 "Menu  New"
-#   • Versus (playing):     y=40 "P1:m  P2:m  S a-b" ; y=53 "Menu  New"
-#   • Win (any mode):       y=40 "You Win!" (Versus adds "Score a-b") ; y=53 "Press K9 for Menu"
+# Purpose:
+# - A minimalist “Lights Out” puzzle using only the MacroPad’s 12 RGB keys.
+# - OLED is used only for short status prompts; all gameplay is on the LEDs.
 #
-# CircuitPython 9.x — Merlin launcher compatible
+# Gameplay:
+# - Menu:  Select mode with K3=Solo, K4=Versus, K5=Co-op (pulsing green).
+# - Board: Keys K0..K8 form a 3×3 grid. Pressing toggles that LED and its neighbors.
+# - Controls: K9=Menu, K11=New puzzle, K10 disabled (always dark).
+# - Display prompts:
+#     • Menu:           "Solo  Versus  Co-op" (y=40) ; blank line (y=53).
+#     • Solo/Co-op:     "Moves: N" (y=40) ; "Menu  New" (y=53).
+#     • Versus:         "P1:m  P2:m  S a-b" (y=40) ; "Menu  New" (y=53).
+#     • Win:            "You Win!" (adds "Score a-b" for Versus) ; 
+#                       "Press K9 for Menu" (y=53).
+#
+# Features:
+# - Three play modes:
+#     • Solo: solve in as few moves as possible.
+#     • Versus: alternating turns, players race to solve; score kept across rounds.
+#     • Co-op: shared move count, team play.
+# - Cosine-pulsed LED animations on press and menu highlights.
+# - Audio cues via macropad.play_tone only (short beeps, shuffle triads, win fanfares).
+# - Complete cleanup on exit (resets LEDs, detaches display group, frees references).
 
 import time, math, random
 import displayio, terminalio

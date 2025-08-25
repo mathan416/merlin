@@ -7,16 +7,6 @@
 #   Procedurally generates solvable mazes (odd sizes: 9×9, 13×13, 17×17).
 #   Features minimap, difficulty selection, and persistent settings.
 #
-# Exposes:
-#   • class maze3d(macropad)
-#       .group         — display group (set as root_group by launcher)
-#       .new_game()    — reset to menu
-#       .tick()        — update loop (called by launcher)
-#       .button(k)     — handle key press
-#       .button_up(k)  — handle key release
-#       .encoderChange — (unused, passthrough)
-#       .encoder_button — (unused, launcher handles exit)
-#       .cleanup()     — teardown and restore launcher state
 #
 # Controls:
 #   • MENU: 

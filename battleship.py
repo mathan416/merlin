@@ -1,4 +1,5 @@
 # battleship.py — Battleship for Adafruit MacroPad
+# Written by Iain Bennett — 2025
 # -------------------------------------------------
 # Main game logic module for the Battleship adaptation on the Adafruit MacroPad.
 # Designed for the Merlin Launcher framework, exposing the required lifecycle methods:

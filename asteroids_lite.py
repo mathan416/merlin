@@ -1,14 +1,43 @@
-# asteroids_lite.py — Asteroids-lite (Swap 2P, Wave Inherit + Creative LEDs + Sounds)
-# For Merlin MacroPad Launcher (CircuitPython 9.x)
+# asteroids_lite.py — Asteroids-Lite
+# Merlin Launcher Compatible (Swap 2P, Wave Inherit, Creative LEDs + Sounds)
+# CircuitPython 9.x / Adafruit MacroPad RP2040 (128×64 mono OLED)
+# Written by Iain Bennett — 2025
 #
-# Exposes: .group, .new_game(), .tick(), .button(key), .button_up(key), .cleanup()
-# Constructor accepts (macropad, tones, **kwargs) but also works with (macropad) or ().
+# Gameplay:
+# - Classic Asteroids distilled for 128×64: only one rock per wave (splits once).
+# - 1P mode or Swap 2P (alternating turns). Optionally inherit wave count on swap.
+# - Player has 3 lives; ship respawns at center with brief invulnerability.
+# - Controls: 
+#     ↑ (K1) Thrust
+#     ←/→ (K3/K5) Rotate
+#     K6–K8 Fire
+#     K11 Start / Resume
+#     K9  Menu toggle (swap mode) or return to Menu
+#
+# Rendering:
+# - Ship drawn via precomputed blit atlas (32 frames, 1-bit).
+# - Asteroids procedurally generated (jagged outlines) + rotated by LUT cos/sin.
+# - Bullets are 1px sprites; wrap-around handled.
+# - Dirty-rect erase (full clear when near edges) keeps speed on small screen.
+#
+# LEDs:
+# - Menu: sweep animation + highlight Start/Toggle keys.
+# - Play: themed per player (cyan vs purple) with thrust flare, cooldown pulse,
+#   heartbeat on menu key, amber warning for low lives, and event flashes 
+#   (wave clear, swap, fire pulse).
+# - Cosine-based easing + exponential smoothing; hardware updates capped to ~30 Hz.
+#
+# Audio:
+# - Non-blocking tone queue. Distinct sounds for fire, hit, ship down, wave clear,
+#   and player swap.
+#
+# File I/O:
+# - Settings persisted to /asteroids_settings.json (swap mode, base asteroid count).
 #
 # Notes:
-# - Uses MerlinChrome.bmp like your launcher on the menu screen (hidden during gameplay).
-# - Cosine-smoothing ONLY for keypad LEDs (no screen flashing).
-# - Defensive bitmaptools: _hline, _vline, _rect_fill clamp and guard fill_region.
-
+# - Uses MerlinChrome.bmp as menu/logo background (hidden during play).
+# - Defensive bitmaptools wrappers for safe drawing.
+# - Tuned for performance on MacroPad’s RP2040, with minimal allocations.
 import math, random, time, json
 import displayio, bitmaptools, terminalio
 from micropython import const

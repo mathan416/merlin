@@ -1,5 +1,52 @@
-# minirogue.py — Mini Roguelike / Roguelite (Merlin Launcher compatible)
-# CircuitPython 9.x / Adafruit MacroPad 128×64 (monochrome OLED)
+# ---------------------------------------------------------------------------
+# minirogue.py — Merlin Rogue
+# ---------------------------------------------------------------------------
+# A compact roguelike adventure designed for the Merlin Launcher environment
+# on the Adafruit MacroPad (CircuitPython 9.x, 128×64 monochrome OLED).
+# Written by Iain Bennett — 2025
+#
+# Core Features:
+#   • Randomly generated dungeon rooms with doors, walls, gold, monsters, and
+#     the legendary Amulet (appears on depth 12).
+#   • Player stats: HP (max 6), gold (score), and dungeon depth tracking.
+#   • Turn-based combat:
+#       - Player and monster attack chances, criticals, knockback, and damage.
+#       - Gold pickup with chance to heal.
+#       - Monster HP scales gently with depth.
+#   • Victory achieved by collecting the Amulet; defeat occurs on HP = 0.
+#   • Adaptive monster cadence (faster with depth, slower when player is low HP).
+#
+# Display & Input:
+#   • Top 40px grid area with custom 5×5 ASCII-style glyphs (drawn into bitmap).
+#   • Bottom HUD with centered text prompts (HP, gold, depth, messages).
+#   • Title screen, in-game HUD, death screen, and victory screen with logo.
+#   • Input cluster (keys K1/K3/K5/K7) moves the player in four directions.
+#   • K9 acts as an “escape/restart” button to return to the title.
+#
+# LED Feedback:
+#   • D-Pad LEDs show current HP with breathing effect when low.
+#   • Gold count shown as up to 4 lit LEDs.
+#   • Key 9 LED indicates active play (solid blue) or restart prompts (blinking).
+#
+# Implementation Notes:
+#   • Uses defensive drawing (bitmaptools optional).
+#   • Grid auto-sizes to fit 128×64 OLED with SCALE=1 (6×5 cell grid).
+#   • Efficient incremental drawing: only touched cells are redrawn each turn.
+#   • LED helper (_LedSmooth) prevents flicker by batching pixel updates.
+#   • Self-contained: no external assets required except optional MerlinChrome.bmp.
+#
+# ---------------------------------------------------------------------------
+# Controls (MacroPad key mapping):
+#
+#   ┌───────────────┐
+#   │   K1          │   Move Up
+#   │K3     K5      │   Move Left / Right
+#   │   K7          │   Move Down
+#   └───────────────┘
+#
+#   K9   → Escape / Restart (return to title)
+#   Other keys unused in this game.
+# ---------------------------------------------------------------------------
 
 import time, math, random
 import displayio, terminalio

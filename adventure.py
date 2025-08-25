@@ -1,25 +1,43 @@
-# adventure.py — Merlin Adventure (Merlin Launcher Compatible, Low-Mem, Scrolling Camera)
+# adventure.py — Merlin Adventure
+# Merlin Launcher Compatible, Low-Memory Roguelike with Scrolling Camera
 # CircuitPython 9.x / Adafruit MacroPad RP2040 (128×64 mono OLED)
 # Written by Iain Bennett — 2025
 #
-# Exposes: class `adventure` with .group, .new_game(), .tick(), .button(key, pressed=True), .button_up(key), .cleanup()
 #
-# Memory-savvy changes:
-# - Tile grid stored as one flat bytearray (MAP_W*MAP_H)
-# - Enemies stored as tiny lists [x, y, hp] (no dicts)
-# - Level generation uses streaming placement (no giant "empties" arrays)
-# - Defensive bitmaptools wrappers for safe drawing
-# - Smooth scrolling camera; HUD pinned at top
+# Key Features:
+# - Smooth scrolling camera system; HUD pinned at screen top.
+# - Optional MerlinChrome.bmp logo shown in menu/pause/game-over.
+# - Low memory footprint:
+#   • Tile grid stored as a single flat bytearray (MAP_W*MAP_H).
+#   • Enemies stored as minimal [x,y,hp] lists.
+#   • Streaming level generation (no giant "empties" arrays).
+# - Defensive bitmaptools wrappers for safe tile drawing.
+# - Player stats (HP, score) and two-player "Swap" mode.
+# - LED system with cosine “breathing” brightness and state-aware coloring.
 #
-# Controls
-# - Menu: ◀/▶ toggle Solo/Swap-2P; K11 Start; K9 Menu
-# - Play: ↑ ← → ↓ (K1,K3,K5,K7) move; K8 Guard/Wait; K11 Pause; K9 Pause/Menu
-# - Pause: K11 Resume; K9 Back to Menu
-# - Game Over: K11 or K9 Return to Menu
+# Controls:
+#   MENU:
+#     ◀/▶ (K3/K5): Toggle Solo / Swap-2P
+#     K11: Start
+#     K9 : Back to Launcher Menu
+#   PLAY:
+#     K1/K3/K5/K7: Move (↑←→↓)
+#     K8: Guard / Wait (chance to heal)
+#     K11: Pause
+#     K9 : Pause & return to Menu
+#   PAUSE:
+#     K11: Resume
+#     K9 : Back to Menu
+#   GAME OVER:
+#     K11 or K9: Return to Menu
 #
-# Notes
-# - Optional chrome/logo background (MerlinChrome.bmp) shows in menu/pause/over
-# - LEDs: cosine "breathing" animation with state-aware coloring
+# Notes:
+# - Player max HP: 9
+# - Level generation: drunkard-walk backbone with random rooms/treasure/hearts/enemies
+# - Enemies pursue nearest player (Manhattan distance), fallback to wandering
+# - HUD shows scores, HP, level, and current turn (in 2P mode)
+# - LEDs highlight active keys (directions, start/menu) with context-sensitive colors
+#
 
 import math, random, time
 import displayio, terminalio

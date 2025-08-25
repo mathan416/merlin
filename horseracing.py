@@ -1,8 +1,49 @@
+# ---------------------------------------------------------------------------
 # horseracing.py — VFD-style Horseracing (Merlin Launcher compatible)
-# CircuitPython 9.x / Adafruit MacroPad 128×64 (monochrome OLED)
+# ---------------------------------------------------------------------------
+# A minimalist horse racing game styled after old VFD (vacuum fluorescent
+# display) handhelds. Designed for the Merlin Launcher on Adafruit MacroPad
+# with CircuitPython 9.x (128×64 monochrome OLED).
+# Written by Iain Bennett — 2025
 #
-# Foreground palette index 0 is TRANSPARENT so static BG lane lines remain visible.
-
+# Core Features
+#   • Five racing lanes with pixel horses advancing toward a finish line
+#   • Title → Bet → Run → Result game loop
+#   • Player chooses a lane (bet) before the race starts
+#   • Horses move with randomized step sizes for tension and variety
+#   • Winner is announced with OLED text + LED highlight
+#
+# Display & HUD
+#   • Static background shows lanes + dotted finish line
+#   • Foreground bitmap (transparent zero) draws horses so the track remains visible
+#   • Centered text prompts guide the player at each state:
+#       - Title screen with logo
+#       - Bet prompt with K0–K4 selectable
+#       - Run with clean track view
+#       - Winner announcement at finish
+#
+# LED Feedback
+#   • BET phase: K0–K4 glow dim blue, selected lane bright blue, K11 green to start
+#   • RUN phase: LEDs fade by race placement (1st = bright, last = dim)
+#   • RESULT phase: Winner’s lane lit green
+#   • TITLE: LEDs off
+#
+# Implementation Notes
+#   • Foreground palette index 0 = TRANSPARENT so background lanes stay visible
+#   • Incremental erase/draw logic keeps horses smooth without redrawing full screen
+#   • _LedSmooth ensures flicker-free LEDs (rate-limited .show)
+#   • Lightweight state machine (TITLE → BET → RUN → RESULT)
+#
+# Controls (MacroPad)
+#   K0–K4 = Select horse lane (bet)
+#   K11   = Start race (after a bet is chosen)
+#   Any key at RESULT → Reset to title
+#
+# Assets / Deps
+#   • MerlinChrome.bmp (optional logo, shown only at title)
+#   • adafruit_display_text.label (HUD prompts)
+#   • bitmaptools (optional; autodetected for fill/erase)
+# ---------------------------------------------------------------------------
 __all__ = ["horseracing"]
 
 import time, random

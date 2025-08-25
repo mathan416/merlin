@@ -1,4 +1,52 @@
-# vector_dreams_bag.py — 1970s "Vector Dreams" for Merlin Launcher (MacroPad / CircuitPython 9.x)
+# ---------------------------------------------------------------------------
+# vector_dreams_bag.py — 1970s "Vector Dreams" Demo Scene
+# CircuitPython 9.x — Merlin Launcher Compatible (Adafruit MacroPad RP2040)
+# Written by Iain Bennett — 2025
+#
+# OVERVIEW
+# ────────────────────────────────────────────────
+# A retro demo-scene homage in the style of late-1970s vector displays
+# and oscilloscopes. Runs on the MacroPad’s 128×64 OLED in stark 1-bit
+# white-on-black, evoking Tektronix scopes and Vectrex-like effects.
+#
+# MODES
+# ────────────────────────────────────────────────
+# • Scope:
+#     ░ Scrolling oscilloscope traces of sine, triangle, and sawtooth waves.
+#     ░ Occasionally drifts into animated Lissajous figures.
+# • Pong:
+#     ░ AI vs AI vector Pong with trailing ball path and faint midline court.
+#     ░ Ball speed, angle, and trail randomized on shuffle.
+# • Disco:
+#     ░ Pulsing circle with clipped checkerboard grid and sparkles.
+#     ░ Palette can invert for strobe-like bursts.
+#
+# CONTROLS
+# ────────────────────────────────────────────────
+# • Encoder: cycle through menu items (Scope / Pong / Disco).
+# • Encoder press (single): enter selected demo.
+# • Encoder press (again): return to menu.
+# • Keys:
+#     – K3 / K5: Adjust demo speed (left/right).
+#     – K7: Shuffle demo parameters (e.g., waveform type, Pong angle, disco FX).
+#
+# FEATURES
+# ────────────────────────────────────────────────
+# • Double-press timing window for robust menu selection.
+# • Defensive drawing functions: hline, rect, fill_region fallback.
+# • LEDs:
+#     – Menu: all LEDs cleared.
+#     – In-demo: movement keys (K3/K5) glow green; shuffle key (K7) glows red.
+# • Launcher compatibility: exposes .group, .new_game(), .tick(),
+#   .button(), .button_up(), .cleanup().
+#
+# NOTES
+# ────────────────────────────────────────────────
+# • Written to capture the 70s “vector dreams” aesthetic — oscilloscopes,
+#   minimalism, and glowing lines on black.
+# • Efficient 1-bit drawing; heavy use of bitmaptools, but safe fallbacks
+#   allow graceful degradation on limited builds.
+# ---------------------------------------------------------------------------
 import time, math, random
 import displayio, terminalio
 import bitmaptools
