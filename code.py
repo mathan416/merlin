@@ -119,7 +119,6 @@ tones = (196, 220, 247, 262, 294, 330, 349, 392, 440, 494, 523, 587)
 
 # ---------- Lazy-load registry instead of pre-import factories ----------
 GAMES_REG = [
-    ("Pac Man",        "pacman",            "pacman",        {}),
     ("Asteroids-Lite", "asteroids_lite",    "asteroids_lite",{}),
     ("Battleship",     "battleship",        "Battleship",    {}),
     ("Beat Trainer",   "beat_trainer",      "beat_trainer",  {}),
@@ -135,6 +134,7 @@ GAMES_REG = [
     ("Macro Maze",     "macro_maze",        "maze3d",        {}),
     ("Magic Square",   "magic_square",      "magic_square",  {}),
     ("Match It",       "match_it",          "match_it",      {}),
+    ("Maze Muncher",   "pacman",            "pacman",        {}),
     ("Merlin Adventure","adventure",        "adventure",     {}),
     ("Merlin Dice",    "merlin_dice",       "merlin_dice",   {}),
     ("Merlin Rogue",   "minirogue",         "minirogue",     {}),

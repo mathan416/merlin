@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# pacman.py — Pac Man
+# pacman.py — Maze Muncher
 # ---------------------------------------------------------------------------
 # A Merlin Launcher–compatible clone of Pac-Man for the Adafruit MacroPad
 # (CircuitPython 9.x / 128×64 1-bit OLED). Single-player, zoom+scroll engine.
@@ -14,7 +14,6 @@
 #   • Warp tunnel across the maze’s mid-row.
 #   • LED “cosine fade” accent colors (no flashing).
 #   • Defensive drawing wrappers so bitmaptools is optional.
-#   • Debug logging throttled with DEBUG_MIN_INTERVAL.
 #
 # Controls (MacroPad keys):
 #   • K1/K3/K5/K7 → UP/LEFT/RIGHT/DOWN
@@ -97,10 +96,6 @@ LED_PERIOD = 3.2
 LED_RGB    = (255, 160, 40)
 LED_DIM, LED_MAX = 0.12, 0.65
 
-# ---- Debugging ----
-DEBUG = True
-DEBUG_MIN_INTERVAL = 0.06  # throttle prints a bit tighter
-
 # ---- Defensive bitmaptools helpers ----
 def _clamp(v, lo, hi):
     if v < lo: return lo
@@ -127,25 +122,6 @@ def _rect_fill(bmp, x, y, w, h, c=1):
 
 # ---- Main class ----
 class pacman:
-    # ---------- Debug helpers ----------
-    def _dbg(self, *args):
-        if not DEBUG: return
-        t = time.monotonic()
-        if not hasattr(self, "_dbg_last"): self._dbg_last = 0.0
-        if (t - self._dbg_last) >= DEBUG_MIN_INTERVAL:
-            try: print(*args)
-            except Exception: pass
-            self._dbg_last = t
-
-    def _key_name(self, key):
-        if key == K_UP: return "UP"
-        if key == K_DOWN: return "DOWN"
-        if key == K_LEFT: return "LEFT"
-        if key == K_RIGHT: return "RIGHT"
-        if key == K_START: return "START"
-        if key == K_MENU: return "MENU"
-        return str(key)
-
     def __init__(self, macropad=None, tones=None, **kwargs):
         self.macropad = macropad
         self.group = displayio.Group()
@@ -201,7 +177,7 @@ class pacman:
 
         # Title UI
         self._show_logo(True)
-        self._set_prompts("Pac Man", "D-Pad to Start")
+        self._set_prompts("Maze Muncher", "D-Pad to Start")
         self._update_camera()
         self._draw_frame(force_full=True)
         self._update_score_label()  # clear initially
@@ -218,12 +194,6 @@ class pacman:
 
         # one-shot full redraw flag (prevents double draw on state transition)
         self._force_full_redraw = False
-
-        self._dbg_last = 0.0
-        self._dbg("PAC DEBUG: map=%dx%d tile=%d view=%dx%d" %
-                  (self.MW, self.MH, TILE, VIEW_W_LOG, VIEW_H_LOG))
-        tx, ty = self._tile_xy(self.px0, self.py0)
-        self._dbg("PAC DEBUG: spawn tile=(%d,%d) px=(%.1f,%.1f)" % (tx, ty, self.px0, self.py0))
 
     # ---------- Map & spawns ----------
     def _build_map(self, W, H):
@@ -488,9 +458,6 @@ class pacman:
         centered = self._center_in_tile(p)
         open_ok = self._is_open(nx, ny)
 
-        self._dbg("TURN? pos=(%.2f,%.2f) tile=(%d,%d) want=%s moving=%s centered=%s open=%s force=%s" %
-                  (p["x"], p["y"], tx, ty, str(want), str(moving), str(centered), str(open_ok), str(force)))
-
         if not open_ok:
             return False
 
@@ -505,8 +472,6 @@ class pacman:
             NUDGE = 0.08
             p["x"] += p["dx"] * NUDGE
             p["y"] += p["dy"] * NUDGE
-            self._dbg("TURN APPLY -> dir=(%.0f,%.0f) pos=(%.2f,%.2f) [nudged]" %
-                      (p["dx"], p["dy"], p["x"], p["y"]))
             return True
 
         return False
@@ -519,7 +484,6 @@ class pacman:
         nx, ny = tx + want[0], ty + want[1]
         if self._is_open(nx, ny):
             if self._attempt_turn(a, want, force=True):
-                self._dbg("APPLY QUEUED -> clear want")
                 self._want_dir = (0, 0)
                 return True
         return False
@@ -531,8 +495,6 @@ class pacman:
 
         nx = a["x"] + a["dx"] * speed * dt
         ny = a["y"] + a["dy"] * speed * dt
-        self._dbg("MOVE in pos=(%.2f,%.2f) dir=(%.0f,%.0f) nx,ny=(%.2f,%.2f)" %
-                (a["x"], a["y"], a["dx"], a["dy"], nx, ny))
 
         # ---- X axis first ----
         xdir = 1 if a["dx"] > 0 else (-1 if a["dx"] < 0 else 0)
@@ -544,8 +506,6 @@ class pacman:
             if txn != tx0:
                 ahead = tx0 + xdir
                 blocked = self._is_wall(ahead, ty)
-                self._dbg("X step: ty=%d tx0->txn: %d->%d ahead=(%d,%d) blocked=%s" %
-                        (ty, tx0, txn, ahead, ty, str(blocked)))
                 if blocked:
                     # Clamp and stop X, then immediately try queued turn if any.
                     if xdir > 0:
@@ -554,7 +514,6 @@ class pacman:
                         a["x"] = tx0 * TILE
                     a["dx"] = 0.0
                     x_clamped = True
-                    self._dbg("X CLAMP stop at x=%.1f" % a["x"])
                     if a is self.player:
                         self._apply_queued_now_if_possible(a)
                 else:
@@ -574,8 +533,6 @@ class pacman:
             if tyn != ty0:
                 ahead = ty0 + ydir
                 blocked = self._is_wall(tx, ahead)
-                self._dbg("Y step: tx=%d ty0->tyn: %d->%d ahead=(%d,%d) blocked=%s" %
-                        (tx, ty0, tyn, tx, ahead, str(blocked)))
                 if blocked:
                     # Clamp and stop Y, then immediately try queued turn if any.
                     if ydir > 0:
@@ -584,7 +541,6 @@ class pacman:
                         a["y"] = ty0 * TILE
                     a["dy"] = 0.0
                     y_clamped = True
-                    self._dbg("Y CLAMP stop at y=%.1f" % a["y"])
                     if a is self.player:
                         self._apply_queued_now_if_possible(a)
                 else:
@@ -617,7 +573,6 @@ class pacman:
             self._apply_queued_now_if_possible(a)
 
         self._apply_warp(a)
-        self._dbg("MOVE out pos=(%.2f,%.2f) dir=(%.0f,%.0f)" % (a["x"], a["y"], a["dx"], a["dy"]))
         
     # ---------- Ghost AI ----------
     def _ghost_options(self, g):
@@ -699,7 +654,6 @@ class pacman:
                     # Do NOT draw here; let the next tick perform the full redraw
                     self._force_full_redraw = True
                     self._update_score_label()
-                    self._dbg("DEATH: positions reset (want cleared)")
                     break
 
     def _reset_positions(self, clear_want=True):
@@ -717,7 +671,6 @@ class pacman:
         self._prev_ghost_xy = [None]*len(self.ghosts)
         self._started = False
         self._play_t0 = time.monotonic()
-        self._dbg("RESET: clear_want=%s want=%s" % (str(clear_want), str(self._want_dir)))
 
     # ---------- Dirty drawing helpers ----------
     def _draw_tile(self, tx, ty):
@@ -884,7 +837,6 @@ class pacman:
         self._update_score_label()
         self._started = False
         self._play_t0 = time.monotonic()
-        self._dbg("STATE -> play (setup complete, want=%s)" % (str(self._want_dir),))
 
     # ---------- State update ----------
     def _tick_play(self, dt):
@@ -893,7 +845,6 @@ class pacman:
         # Try queued turn once per tick (only if queued)
         if self._want_dir != (0, 0):
             if self._attempt_turn(self.player, self._want_dir):
-                self._dbg("TICK APPLY OK -> clear want")
                 self._want_dir = (0, 0)
 
         frightened = (self._fright_t > 0.0)
@@ -952,11 +903,10 @@ class pacman:
         self._reset_positions(clear_want=True)
         self._show_logo(True)
         self._state = "title"
-        self._set_prompts("Press Start", "…or use an arrow")
+        self._set_prompts("Maze Muncher", "DPad to start")
         self._update_camera()
         self._draw_frame(force_full=True)
         self._update_score_label()
-        self._dbg("STATE -> title (new_game)")
 
     def tick(self, dt=None):
         now = time.monotonic()
@@ -998,7 +948,6 @@ class pacman:
             self._update_camera()
             self._draw_frame(force_full=True)
             self._update_score_label()
-            self._dbg("STATE -> title (menu)")
             return
 
         # Auto-start on arrow from title/between/gameover
@@ -1008,7 +957,6 @@ class pacman:
                 if key == K_RIGHT: self._want_dir = ( 1, 0)
                 if key == K_UP:    self._want_dir = ( 0,-1)
                 if key == K_DOWN:  self._want_dir = ( 0, 1)
-                self._dbg("BTN %s -> queue %s (auto-start)" % (self._key_name(key), str(self._want_dir)))
                 if self._state == "between":
                     self._refill_pellets()
                     self._reset_positions(clear_want=False)
@@ -1037,7 +985,6 @@ class pacman:
                     self._refill_pellets()
                     self._reset_positions(clear_want=True)
                 self._started = False
-                self._dbg("START -> play")
                 self._start_play()
             return
 
@@ -1048,13 +995,11 @@ class pacman:
                 self._set_prompts("", "")
                 self._update_score_label()
                 self._beep(392, 60)
-                self._dbg("STATE -> pause")
             elif self._state == "pause":
                 self._state = "play"
                 self._set_prompts("", "")
                 self._update_score_label()
                 self._beep(784, 60)
-                self._dbg("STATE -> play")
             return
         
         # Direction queue (play/pause)
@@ -1065,7 +1010,6 @@ class pacman:
             if key == K_DOWN:  want = ( 0, 1)
             self._want_dir = want
             self._started = True
-            self._dbg("BTN %s -> queue %s (state=%s)" % (self._key_name(key), str(self._want_dir), self._state))
             if self._state == "play":
                 # Apply right now if possible; else it will apply on next clamp/stop/tick
                 self._apply_queued_now_if_possible(self.player)

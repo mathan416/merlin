@@ -7,55 +7,13 @@
 # `battleship.py`. Game state lives in Battleship; this file
 # renders it quickly with minimal allocations.
 #
-# Relationship to battleship.py
-# - battleship.py constructs UI(mac, profile) and calls:
-#     - ensure_attached(): attach our Group to the display
-#     - clear()/draw_*(): build or update on-screen layers
-#     - *_overlay/paint_*(): update small regions efficiently
-#     - leds_*(): light keys per screen/state
-#   It also calls ui.detach() during cleanup if available.
-#
-# What this module provides
-# - A single UI class exposing:
-#     group                -> displayio.Group (root of all layers)
-#     ensure_attached()    -> attach group to display (CP 7–9 safe)
-#     clear()              -> build gameplay layers (grid/board/cursor)
-#     refresh_palette()    -> retint without reallocating bitmaps
-#     _set_game_layers_visible(grid, board, cursor)
-#     draw_title()/draw_settings()/draw_place()/draw_battle_overlay()
-#     overlay_update_cells()/repaint_ship_segment_range()/move_cursor()
-#     redraw_ghost()/rotate_ghost()/draw_prompt()/on_shot()
-#     leds_title()/leds_settings()/leds_place()/leds_battle()/leds_results()
-#     detach()             -> (optional) release display ownership cleanly
-#
-# Performance & memory notes
-# - Bitmaps are allocated once and reused; palette retinting avoids churn.
-# - Heavy layers are hidden between screens rather than destroyed.
-# - Drawing helpers write directly into bitmaps via bitmaptools.fill_region().
-# - No blocking loops; only tiny message pauses (MSG_PAUSE) in on_shot().
-#
-# LEDs
-# - Key LED patterns are throttled and diffed to reduce I2C/SPI chatter.
-# - Per-screen helpers centralize mapping: leds_title()/.../leds_results().
-#
-# Cleanup
-# - You do not strictly need a cleanup() here because Battleship.cleanup()
-#   already detaches groups and turns LEDs off defensively.
-# - However, providing UI.detach() (below) lets the UI release itself in a
-#   single call and keeps responsibilities nicely separated.
-#
 # License:
 #   CC0 1.0 Universal (Public Domain Dedication)
-#   Copy, modify, distribute, perform — attribution appreciated but not required.
-#
-# Date: 2025-08-15
-# Author: Iain Bennett (adapted for MacroPad Battleship)
 
 import time
 import gc
 import displayio, terminalio
 import bitmaptools
-from battleship_config import DEBUG, debug_print, _vis
 
 # Grid constants (must match battleship.py)
 GRID_W = 10
@@ -252,8 +210,7 @@ class UI:
 
     # ---------- Game layers (allocated once) ----------
     def _build_layers(self):
-        # Bail if already built and valid
-        # (Callers may rely on rebuild to clear content, so we always rebuild group)
+        # Always rebuild group (callers may rely on this to clear content)
         while len(self.group):
             self.group.pop()
         gc.collect()
@@ -422,10 +379,10 @@ class UI:
         if filled:
             bitmaptools.fill_region(bmp, px, py, px + w, py + h, color_idx)  # end-exclusive
         else:
-            for xx in range(w):
+            for xx in range(h):
                 bmp[px + xx, py] = color_idx
                 bmp[px + xx, py + h - 1] = color_idx
-            for yy in range(h):
+            for yy in range(w):
                 bmp[px, py + yy] = color_idx
                 bmp[px + w - 1, py + yy] = color_idx
 
@@ -644,14 +601,14 @@ class UI:
             self._prompt_lbl.text = "\n".join(lines)
 
     def _actor_tag(self, session, who=None, is_cpu=False):
-            if is_cpu:
-                return "CPU"
-            if who is None:
-                who = getattr(session, "current_player", 0)
-            # In 1P mode, player index 1 is the CPU; only index 0 is human (P1)
-            if who == 0:
-                return "P1"
-            return "P2" if getattr(session, "mode_2p", False) else "CPU"
+        if is_cpu:
+            return "CPU"
+        if who is None:
+            who = getattr(session, "current_player", 0)
+        # In 1P mode, player index 1 is the CPU; only index 0 is human (P1)
+        if who == 0:
+            return "P1"
+        return "P2" if getattr(session, "mode_2p", False) else "CPU"
     
     def on_shot(self, result, tag=None):
         strings = self.profile.get("strings", {})
@@ -698,30 +655,7 @@ class UI:
                 self.paint_board_cell_from_model(session, session.current_player, x, y, show_ships=True)
         self.redraw_ghost(session, ok=True)
         self.draw_prompt(self.profile["strings"]["place_prompt"],
-                 tag=self._actor_tag(session, who=session.current_player))
-
-    def debug_visible_ships(self, session, board_index, tag=""):
-        b = session.boards[board_index]
-        total = 0
-        seen_as_1 = 0  # center pixel shows palette index 1 (ship fill)
-        seen_as_2 = 0  # center shows a hit "X" color
-        seen_as_3 = 0  # center shows a miss dot
-        leak_centers = []  # list of ship cells whose centers are 1 (leak)
-
-        for y in range(GRID_H):
-            for x in range(GRID_W):
-                v = b.grid[y*GRID_W + x]
-                if v == SHIP:
-                    total += 1
-                    idx = self._peek_center_index(x, y)
-                    if idx == 1:
-                        seen_as_1 += 1
-                        leak_centers.append((x, y))
-                    elif idx == 2:
-                        seen_as_2 += 1
-                    elif idx == 3:
-                        seen_as_3 += 1
-        debug_print(f"[debug_visible_ships {tag}] total={total} seen_ship_fill={seen_as_1} seen_hit={seen_as_2} seen_miss={seen_as_3} leaks={leak_centers}")
+                         tag=self._actor_tag(session, who=session.current_player))
 
     def draw_battle_overlay(self, session):
         # Ensure layers exist and are visible
@@ -749,12 +683,6 @@ class UI:
             self.draw_prompt(prompt, tag=self._actor_tag(session))  # current player
             time.sleep(MSG_PAUSE)
 
-        # NOTE:
-        # - No display.refresh() here; let auto_refresh handle it, or
-        #   batch at a higher level if you’ve disabled auto_refresh.
-        # - For per-move updates, use overlay_update_cells(session, cells)
-        #   with a small list of (x, y) that actually changed.
-
     def paint_board_cell_from_model(self, session, target_board_index, gx, gy, show_ships, hit_style="enemy"):
         if getattr(self, "_board_index_shown", None) != target_board_index:
             return
@@ -766,7 +694,7 @@ class UI:
                 self._draw_plus_in_cell(self._board_bmp, gx, gy, 2)
             else:
                 self._draw_x_in_cell(self._board_bmp, gx, gy, 2)
-        elif v == MISS and DEBUG == True:
+        elif v == MISS:
             self._fill_cell(self._board_bmp, gx, gy, 0, filled=True)
             self._fill_cell(self._board_bmp, gx, gy, 3, filled=False)
             cx = gx * CELL + 1 + (CELL - 2) // 2
@@ -783,7 +711,6 @@ class UI:
             y = gy + (0 if horiz else i)
             if 0 <= x < GRID_W and 0 <= y < GRID_H:
                 self.paint_board_cell_from_model(session, board_index, x, y, show_ships)
-        #self._flush()
 
     def move_cursor(self, session, dx, dy):
         x, y = session.cursor
@@ -828,7 +755,6 @@ class UI:
             self._fill_cell(self._board_bmp, x, y, idx, filled=False)
 
         self._ghost_prev_cells = cells
-        #self._flush()
 
     def rotate_ghost(self, session):
         try:
@@ -849,7 +775,7 @@ class UI:
 
         if cell_enemy == HIT:
             self._draw_x_in_cell(bmp, x, y, 2)
-        elif cell_enemy == MISS and DEBUG == True:
+        elif cell_enemy == MISS:
             self._fill_cell(bmp, x, y, 3, filled=False)
             cx = x * CELL + 1 + (CELL - 2) // 2
             cy = y * CELL + 1 + (CELL - 2) // 2
@@ -857,14 +783,13 @@ class UI:
 
         if cell_player == HIT:
             self._draw_plus_in_cell(bmp, x, y, 2)
-        elif cell_player == MISS and DEBUG == True:
+        elif cell_player == MISS:
             self._fill_cell(bmp, x, y, 3, filled=False)
 
     def overlay_update_cells(self, session, cells):
         for (x, y) in cells:
             if 0 <= x < GRID_W and 0 <= y < GRID_H:
                 self._overlay_paint_cell(session, x, y)
-        #self._flush()
         
     def _peek_center_index(self, gx, gy):
         px = gx * CELL + 1 + (CELL - 2) // 2

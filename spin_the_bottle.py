@@ -40,7 +40,7 @@
 # • Bitmaptools drawing is wrapped in defensive clamps and fallbacks.
 # • Written for resilience: hardware/firmware errors degrade gracefully.
 
-import math, time, random
+import time, random
 import displayio, terminalio
 import bitmaptools
 from micropython import const
@@ -58,8 +58,8 @@ FG          = const(1)
 
 SHOW_LOGO   = True  # bool is fine as a plain variable
 
-PROMPT_Y1   = const(38)
-PROMPT_Y2   = const(50)
+PROMPT_Y1   = const(31)
+PROMPT_Y2   = const(45)
 
 # Keys
 PARTY_KEYS = (0, 1, 2, 5, 8, 11, 10, 9, 6, 3)  # K0→K1→K2→K5→K8→K11→K10→K9→K6→K3→loop
@@ -96,40 +96,6 @@ def _clamp(val, lo, hi):
     if val < lo: return lo
     if val > hi: return hi
     return val
-
-def _hline(bmp, x0, x1, y, color):
-    if not bmp: return
-    try:
-        W, H = bmp.width, bmp.height
-    except Exception:
-        return
-    if y < 0 or y >= H: return
-    if x0 > x1: x0, x1 = x1, x0
-    x0 = _clamp(x0, 0, W - 1)
-    x1 = _clamp(x1, 0, W - 1)
-    try:
-        bitmaptools.draw_line(bmp, x0, y, x1, y, color)
-    except Exception:
-        for x in range(x0, x1 + 1):
-            try: bmp[x, y] = color
-            except Exception: pass
-
-def _vline(bmp, x, y0, y1, color):
-    if not bmp: return
-    try:
-        W, H = bmp.width, bmp.height
-    except Exception:
-        return
-    if x < 0 or x >= W: return
-    if y0 > y1: y0, y1 = y1, y0
-    y0 = _clamp(y0, 0, H - 1)
-    y1 = _clamp(y1, 0, H - 1)
-    try:
-        bitmaptools.draw_line(bmp, x, y0, x, y1, color)
-    except Exception:
-        for y in range(y0, y1 + 1):
-            try: bmp[x, y] = color
-            except Exception: pass
 
 def _rect_fill(bmp, x, y, w, h, color):
     if not bmp: return

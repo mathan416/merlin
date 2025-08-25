@@ -158,7 +158,8 @@ class _LedSmooth:
 class slot_reels:
     __slots__=("macropad","group","bg_bmp","bg_tile","fg_bmp","fg_tile","_logo_tile",
                "lbl1","lbl2","led","state","credits","reels","spd","lock","last",
-               "_payout","_payout_text","t0")
+               "_payout","_payout_text","t0","_last_ticks","_last_tick_t")
+
     def __init__(self,macropad=None,*_tones,**_kw):
         self.macropad=macropad
         self.group=displayio.Group()
@@ -194,17 +195,40 @@ class slot_reels:
     def _set_layers_visible(self,show):
         self.bg_tile.hidden=self.fg_tile.hidden=not show
 
-    def _blip(self,f):
-        if self.macropad and hasattr(self.macropad,"play_tone"):
-            try:self.macropad.play_tone(int(f))
-            except Exception:pass
+    # --- Sound helpers (use MacroPad's play_tone) ---
+    def _tone(self, f, d=0.06):
+        if self.macropad and hasattr(self.macropad, "play_tone"):
+            try:
+                self.macropad.play_tone(int(f), float(d))
+            except Exception:
+                pass
 
-    def new_game(self,mode=None):
-        self.state=STATE_TITLE
-        self.credits=100
-        self.reels=[0,2,4]; self.spd=[0.0]*3; self.lock=[False]*3
-        self._payout=0; self._payout_text=""
-        self.t0=time.monotonic()
+    def _melody(self, notes):
+        # notes = [(freq, duration), ...]
+        if not (self.macropad and hasattr(self.macropad, "play_tone")):
+            return
+        for f, d in notes:
+            try:
+                self.macropad.play_tone(int(f), float(d))
+            except Exception:
+                pass
+
+    def _tick_sfx(self, reel_idx):
+        # short per-reel click; higher pitch on earlier reels
+        base = 700 - 70 * reel_idx
+        self._tone(base, 0.03)
+
+    def new_game(self, mode=None):
+        self.state = STATE_TITLE
+        self.credits = 100
+        self.reels = [0, 2, 4]
+        self.spd = [0.0] * 3
+        self.lock = [False] * 3
+        self._payout = 0
+        self._payout_text = ""
+        self.t0 = time.monotonic()
+        self._last_ticks = [int(r) for r in self.reels]   # last integer positions (per reel)
+        self._last_tick_t = [0.0, 0.0, 0.0]               # last time we clicked (per reel)
         self._draw_frame()
         self._set_logo_visible(True); self._set_layers_visible(False)
         self._draw()
@@ -231,8 +255,8 @@ class slot_reels:
         _rect_fill(self.fg_bmp,0,0,SCREEN_W,SCREEN_H,0)
         centers=(11,51,91)
         # Vertically center glyphs in new interior height:
-        # interior (non-border) is (FRAME_TOP+1) .. (FRAME_BOT-1) = 17..51 (35px tall)
-        # glyph height at scale=3 is 7*3=21 -> top = 17 + (35-21)//2 = 24
+        # interior (non-border) is (FRAME_TOP+1) .. (FRAME_BOT-1) = 14..48 (35px tall if top=13, bot=49)
+        # glyph height at scale=3 is 7*3=21 -> top ≈ 14 + (35-21)//2 = 21
         GLYPH_Y = 21
         for i in range(3):
             ch=SYMS[int(self.reels[i])%len(SYMS)]
@@ -274,19 +298,30 @@ class slot_reels:
         self.led.show()
 
     def _begin_spin(self):
-        if self.credits<=0:return
-        self.credits-=1; self.state=STATE_SPIN
+        if self.credits <= 0: return
+        self.credits -= 1
+        self.state = STATE_SPIN
         self._set_logo_visible(False); self._set_layers_visible(True)
-        self.lock=[False]*3
-        self.reels=[random.randrange(0,len(SYMS)) for _ in range(3)]
-        self.spd=[25.0,30.0,35.0]; self.last=time.monotonic()
+        self.lock = [False] * 3
+        self.reels = [random.randrange(0, len(SYMS)) for _ in range(3)]
+        self.spd = [25.0, 30.0, 35.0]
+        self.last = time.monotonic()
         self.t0 = time.monotonic()
-        self._blip(330); self._draw()
+        self._last_ticks = [int(r) for r in self.reels]
+        self._last_tick_t = [0.0, 0.0, 0.0]
 
-    def _stop_reel(self,idx):
-        if self.state!=STATE_SPIN:return
-        self.lock[idx]=True; self.spd[idx]=0.0
-        self._blip(262+idx*40)
+        # Spin upsweep (quick, punchy)
+        self._melody([(240, 0.04), (300, 0.05), (360, 0.06)])
+
+        self._draw()
+
+    def _stop_reel(self, idx):
+        if self.state != STATE_SPIN: return
+        self.lock[idx] = True
+        self.spd[idx] = 0.0
+        # Thunk (two short tones, slightly different per reel)
+        f = 280 + idx * 60
+        self._melody([(f, 0.045), (int(f * 0.75), 0.045)])
 
     def _score(self):
         a,b,c=[SYMS[int(i)%len(SYMS)] for i in self.reels]
@@ -297,33 +332,55 @@ class slot_reels:
     def tick(self,dt=0.016):
         if self.state==STATE_SPIN:
             now=time.monotonic(); dt=min(0.05,now-getattr(self,"last",now)); self.last=now
+
             for i in range(3):
                 if self.spd[i]>0.0 and not self.lock[i]:
+                    # advance reel position
                     self.reels[i]+=self.spd[i]*dt
+                    # play a short click when the integer symbol index changes
+                    cur = int(self.reels[i]) % len(SYMS)
+                    if cur != self._last_ticks[i]:
+                        # rate-limit clicks per reel
+                        if (now - self._last_tick_t[i]) > 0.045:
+                            self._tick_sfx(i)
+                            self._last_tick_t[i] = now
+                        self._last_ticks[i] = cur
+
             for i in range(3):
                 if not self.lock[i]:
                     self.spd[i]-=8.0*dt
                     if self.spd[i]<=0.0: self.spd[i]=0.0
+
             if all(s==0.0 for s in self.spd):
                 self._payout=self._score(); self.credits+=self._payout
                 self._payout_text="Winnings:{}  Bank:{}".format(self._payout,self.credits)
                 self.state=STATE_RESULT; self.t0=time.monotonic()
-                self._blip(523 if self._payout>0 else 196)
+
+                if self._payout > 0:
+                    # win jingle
+                    self._melody([(523, 0.07), (659, 0.08), (784, 0.12)])
+                else:
+                    # lose thunk
+                    self._melody([(220, 0.06), (147, 0.10)])
+
+                self._draw(); return
+
             self._draw()
-        else: self._draw_leds()
+        else:
+            self._draw_leds()
 
     def button(self,key,pressed=True):
         if not pressed:return
         if self.state==STATE_TITLE:
             self.state=STATE_IDLE; self._set_logo_visible(True); self._set_layers_visible(False)
-            self._blip(330); self._draw(); return
+            self._tone(330, 0.07); self._draw(); return
         if self.state==STATE_IDLE:
             self._begin_spin()
         elif self.state==STATE_SPIN:
             if key in (3,4,5): self._stop_reel({3:0,4:1,5:2}[key]); self._draw()
         elif self.state==STATE_RESULT:
             self.state=STATE_IDLE; self._set_logo_visible(True); self._set_layers_visible(False)
-            self._blip(247); self._draw()
+            self._tone(247, 0.07); self._draw()
 
     def cleanup(self):
         try:self._set_logo_visible(False); self._set_layers_visible(True)

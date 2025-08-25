@@ -16,13 +16,6 @@
 #   - Define reusable helpers (e.g., debug_print)
 #
 # Typical Contents:
-#   DEBUG
-#     Boolean flag (True/False) that controls whether debug_print()
-#     statements in the game output diagnostic information.
-#
-#   debug_print(*args, **kwargs)
-#     A wrapper around print() that only outputs text if DEBUG is True.
-#     Useful for logging without cluttering normal gameplay.
 #
 #   Global constants (optional)
 #     You can define any additional global values here that multiple

@@ -1,38 +1,13 @@
 # battleship.py — Battleship for Adafruit MacroPad
 # Written by Iain Bennett — 2025
 # -------------------------------------------------
-# Main game logic module for the Battleship adaptation on the Adafruit MacroPad.
-# Designed for the Merlin Launcher framework, exposing the required lifecycle methods:
-#   __init__()      — Initialize game state and resources.
-#   new_game()      — Reset game state and UI for a new match.
-#   tick()          — Per-frame update loop for animations and logic.
-#   button()        — Handle key press events from the MacroPad.
-#   button_up()     — Handle key release events (optional).
-#   encoderChange() — Handle rotary encoder input for in-game navigation.
-#   cleanup()       — Release resources before returning to menu.
-#
 # License:
 #   Released under the CC0 1.0 Universal (Public Domain Dedication).
-#   You can copy, modify, distribute, and perform the work, even for commercial purposes,
-#   all without asking permission. Attribution is appreciated but not required.
-#
-# Features:
-# - 10×10 grid rendered on the MacroPad OLED.
-# - Support for movement, ship placement, rotation, and firing.
-# - Personality packs for themed palettes and UI styles.
-# - Debug flag for selective logging during development.
-#
-# Dependencies:
-# - CircuitPython displayio for rendering graphics.
-# - `battleship_personalities.py` for palette/theme definitions.
-#
-# Date: 2025-08-15
-# Author: Iain Bennett (adapted for MacroPad Battleship)
 
 import time
 import gc
-from battleship_config import DEBUG, debug_print, _vis, validate_profiles
-        
+from battleship_config import _vis, validate_profiles
+
 ppl = None
 _profiles_validated = False
 def _load_profiles():
@@ -40,19 +15,16 @@ def _load_profiles():
     if ppl is None:              # import only once, on demand
         import battleship_personalities as _ppl
         ppl = _ppl
-        
 
 # -------------------------- Game constants --------------------------
 GRID_W = 10
 GRID_H = 10
-
 
 # Board cell values
 EMPTY = 0
 SHIP  = 1
 HIT   = 2
 MISS  = 3
-
 
 # State enum
 TITLE, SETTINGS, PLACE, BATTLE, RESULTS, HANDOFF = range(6)
@@ -91,7 +63,7 @@ class Board:
         self.grid = bytearray(100)  # starts all EMPTY (0)
         # ship_map: 0..N-1 = ship index, 255 = no ship
         self.ship_map = bytearray([255]) * 100
-        # ships: list of [length, hits] (small, fixed-size lists are ok)
+        # ships: list of [length, hits]
         self.ships = []
         self.remaining_hits = 0
 
@@ -141,11 +113,7 @@ class Board:
             self.grid[ii] = HIT
             sidx = self.ship_map[ii]
             if sidx == 255:
-                # Fallback so games can still end; also flag it for debugging
-                try:
-                    debug_print("WARN: ship_map=255 at", x, y)
-                except Exception:
-                    pass
+                # Defensive: allow game to continue even if map missing
                 self.remaining_hits -= 1
                 return "hit"
 
@@ -171,7 +139,7 @@ class AI:
 
     def _xy_to_i(self, x, y): return y*GRID_W + x
     def _i_to_xy(self, i): return (i % GRID_W, i // GRID_W)
-    
+
     def random_place(self, board, ships):
         # Simple random placement respecting collisions/bounds
         for _, length in ships:
@@ -241,7 +209,7 @@ class AI:
 
         # Defensive default
         return (0, 0)
-    
+
     def feed_result(self, x, y, result):
         # Record neighbors to try next when we get a hit/sunk
         if result in ("hit", "sunk"):
@@ -256,8 +224,6 @@ class AI:
                 # Clear hunt stack when a ship is confirmed sunk
                 self._target_stack.clear()
 
-# -------------------------- UI helpers --------------------------
-
 # -------------------------- Game class --------------------------
 class Battleship:
     __slots__ = (
@@ -265,9 +231,8 @@ class Battleship:
         "boards","to_place","placed_index","current_player","cursor","ghost",
         "_handoff_next","group","_last_ghost_state","_led_flash_until",
         "ui","ai","rng","_settings_items","_settings_index",
-        "_post_win_until","_cleaned", 
-    )           
-
+        "_post_win_until","_cleaned",
+    )
 
     def __init__(self, macropad, *args, **kwargs):
         self.mac = macropad
@@ -314,16 +279,15 @@ class Battleship:
         ]
         self._settings_index = 0
 
-    # Launcher calls this after construction       
+    # Launcher calls this after construction
     def new_game(self):
         self._handoff_next = None
         _load_profiles()
-        
+
         global _profiles_validated
-        #if DEBUG and not _profiles_validated:
-        validate_profiles()  
+        validate_profiles()
         _profiles_validated = True
-        
+
         self.profile = ppl.PROFILES.get(self.profile_id, ppl.PROFILES[ppl.DEFAULT_PROFILE_ID])
         self._ensure_personality_items()
 
@@ -345,7 +309,7 @@ class Battleship:
             self.ui.profile = self.profile
 
         self.group = self.ui.group
-        self.ui.ensure_attached() 
+        self.ui.ensure_attached()
         self.ui._set_game_layers_visible(grid=False, board=False, cursor=False)
         _vis(self.ui)
         self.ui.draw_title()
@@ -371,7 +335,6 @@ class Battleship:
         try:
             spk = getattr(self.mac, "speaker", None)
             if spk is not None:
-                # Some builds expose enable, others auto_play etc.; enable=False is safe no-op if absent
                 spk.enable = False
         except Exception:
             pass
@@ -387,24 +350,18 @@ class Battleship:
         # 2) Display: blank (best-effort), detach our group, restore refresh
         try:
             if disp:
-                # Remember original auto_refresh if you recorded it earlier; fallback to current
                 prev_auto = getattr(self, "_orig_auto_refresh", getattr(disp, "auto_refresh", True))
-
-                # Prevent mid-update flicker
                 try:
                     disp.auto_refresh = False
                 except Exception:
                     pass
 
-                # Best-effort blank frame (avoid allocations)
                 try:
-                    # If UI has a quick clear, prefer that (no re-layout)
                     if ui and hasattr(ui, "clear"):
                         try:
                             ui.clear()
                         except Exception:
                             pass
-                    # Force a refresh; some builds require kwarg, others not
                     try:
                         disp.refresh(minimum_frames_per_second=0)
                     except Exception:
@@ -415,7 +372,6 @@ class Battleship:
                 except Exception:
                     pass
 
-                # Detach our group from the root
                 try:
                     grp = getattr(ui, "group", None)
                     root = getattr(disp, "root_group", None)
@@ -424,12 +380,10 @@ class Battleship:
                             disp.root_group = None
                         except Exception:
                             try:
-                                # Older displayio API
                                 disp.show(None)
                             except Exception:
                                 pass
                     else:
-                        # If our group is a child of a root Group, remove it
                         if root and grp and hasattr(root, "remove"):
                             try:
                                 if grp in root:
@@ -439,7 +393,6 @@ class Battleship:
                 except Exception:
                     pass
 
-                # Restore auto_refresh
                 try:
                     disp.auto_refresh = prev_auto
                 except Exception:
@@ -459,11 +412,11 @@ class Battleship:
         except Exception:
             pass
 
-        # 4) Neutralize any timers/flags so a stray tick() after cleanup is harmless
+        # 4) Neutralize timers/flags so a stray tick() after cleanup is harmless
         try:
-            self._led_flash_until   = 0
-            self._post_win_until    = 0
-            self._tick_inited       = False
+            self._led_flash_until    = 0
+            self._post_win_until     = 0
+            self._tick_inited        = False
             self._next_cursor_toggle = 0
             self._next_ghost_refresh = 0
         except Exception:
@@ -483,30 +436,28 @@ class Battleship:
         except Exception:
             pass
 
-        # 6) Final GC sweep (twice helps fragmentation on CP)
+        # 6) Final GC sweep
         try:
             gc.collect()
             gc.collect()
         except Exception:
             pass
-            
+
     # --- SFX helpers (super lightweight, no samples) ---
     def _beep(self, freq, dur=0.08):
         """Play a single beep using MacroPad's speaker."""
         if not self.sfx_enabled:
             return
         try:
-            # Preferred: built-in MacroPad helper
             if hasattr(self.mac, "play_tone"):
                 self.mac.play_tone(freq, dur)
                 return
-            # Fallback: direct speaker control
             spk = getattr(self.mac, "speaker", None)
             if spk:
                 spk.enable = True
                 spk.play_tone(freq, dur)
         except Exception:
-            pass  # Ignore sound errors
+            pass
 
     def _beep_seq(self, notes, gap=0.02):
         """Play a sequence of (frequency, duration) beeps."""
@@ -518,22 +469,19 @@ class Battleship:
                 time.sleep(gap)
             except Exception:
                 pass
-            
+
     def _ensure_personality_items(self):
         _load_profiles()
         keys = tuple(ppl.PROFILES.keys())
-        # Always populate the choices
         self._settings_items[2] = ("Personality", keys)
-        # Coerce profile_id to a valid one
         if not keys:
-            # Nothing to choose from (shouldn’t happen), keep as-is
             return
         if self.profile_id not in ppl.PROFILES:
             try:
                 self.profile_id = ppl.DEFAULT_PROFILE_ID
             except Exception:
                 self.profile_id = keys[0]
-    
+
     def tick(self):
         now = time.monotonic()
 
@@ -551,7 +499,7 @@ class Battleship:
         # Nothing to do for non-game screens
         if self.state in (TITLE, SETTINGS):
             return
-        
+
         elif self.state == RESULTS:
             # Wait until timer expires, then go back to title
             if time.monotonic() >= self._post_win_until:
@@ -567,30 +515,28 @@ class Battleship:
                     self._next_cursor_toggle = now + self._blink_period
             except Exception:
                 pass
-                    
-            # In tick(), PLACE refresh:
-            if self.state == PLACE:
-                if now >= self._next_ghost_refresh:
-                    try:
-                        if self.placed_index < len(self.to_place):
-                            _, length = self.to_place[self.placed_index]
-                        else:
-                            length = 1
-                        horiz = self.ghost.get("horiz", True)
-                        board = self.boards[self.current_player]
-                        cx, cy = self.cursor
-                        ok = board.can_place(cx, cy, length, horiz)
 
-                        ghost_state = (cx, cy, horiz, ok)
-                        if ghost_state != self._last_ghost_state:
-                            self.ui.redraw_ghost(self, ok=ok)
-                            self._last_ghost_state = ghost_state
-                    except Exception:
-                        pass
-                    finally:
-                        self._next_ghost_refresh = now + self._ghost_refresh_period
-                    
-            # in Battleship.tick (after computing `now`)
+            # PLACE: periodic ghost refresh & validity indicator
+            if self.state == PLACE and now >= self._next_ghost_refresh:
+                try:
+                    if self.placed_index < len(self.to_place):
+                        _, length = self.to_place[self.placed_index]
+                    else:
+                        length = 1
+                    horiz = self.ghost.get("horiz", True)
+                    board = self.boards[self.current_player]
+                    cx, cy = self.cursor
+                    ok = board.can_place(cx, cy, length, horiz)
+                    ghost_state = (cx, cy, horiz, ok)
+                    if ghost_state != self._last_ghost_state:
+                        self.ui.redraw_ghost(self, ok=ok)
+                        self._last_ghost_state = ghost_state
+                except Exception:
+                    pass
+                finally:
+                    self._next_ghost_refresh = now + self._ghost_refresh_period
+
+            # BATTLE: LED flash window expiry
             if self.state == BATTLE:
                 try:
                     if getattr(self, "_led_flash_until", 0) and now >= self._led_flash_until:
@@ -599,7 +545,7 @@ class Battleship:
                 except Exception:
                     pass
 
-    # Encoder rotation while in-game (launcher forwards this)
+    # Encoder rotation while in settings
     def encoderChange(self, pos, last_pos):
         if self.state != SETTINGS:
             return
@@ -629,7 +575,7 @@ class Battleship:
         else:
             self.ui.draw_settings(self._settings_items, self._settings_index, self)
 
-        # Key handling (launcher sends presses only)
+    # Key handling (launcher sends presses only)
     def button(self, key):
         # ---------- TITLE ----------
         if self.state == TITLE:
@@ -655,7 +601,7 @@ class Battleship:
                 self._beep(520, 0.03)
                 self._next_item()
                 if self._settings_items[self._settings_index][0] == "Mode":
-                    self.ui.clear()  # you intentionally clear when toggling mode
+                    self.ui.clear()
                 self.ui.draw_settings(self._settings_items, self._settings_index, self)
                 self.ui.leds_settings()
             return
@@ -683,7 +629,6 @@ class Battleship:
                 self.ui.redraw_ghost(self, ok=ok)
 
             elif key == 4:  # place ship
-                # safe reads
                 if self.placed_index < len(self.to_place):
                     _, length = self.to_place[self.placed_index]
                 else:
@@ -724,11 +669,11 @@ class Battleship:
                                 return
                             else:
                                 # Player 2 done, go to battle
-                                self._beep_seq([(660,0.05),(880,0.05),(1100,0.1)], gap=0.02)
+                                self._beep_seq([(660,0.05),(880,0.05),(1100,0.10)], gap=0.02)
                                 self._begin_battle()
                         else:
                             # 1P done, go to battle
-                            self._beep_seq([(660,0.05),(880,0.05),(1100,0.1)], gap=0.02)
+                            self._beep_seq([(660,0.05),(880,0.05),(1100,0.10)], gap=0.02)
                             self._begin_battle()
                 else:
                     self._beep(220, 0.08)
@@ -754,8 +699,6 @@ class Battleship:
 
                 # Model update
                 result = self.boards[target].fire(x, y)
-                debug_print("enemy_cell_after_fire:", self.boards[target].grid[y*GRID_W + x])
-                debug_print(result, x, y)
 
                 # Ensure layers visible
                 self.ui._ensure_game_layers()
@@ -764,17 +707,6 @@ class Battleship:
 
                 # Paint impacted cell
                 self.ui.overlay_update_cells(self, [(x, y)])
-
-                if DEBUG:
-                    self.ui._fill_cell(self.ui._board_bmp, 0, 0, 2, filled=True)
-                    self.ui._flush()
-                    debug_print("center_after_flush:", self.ui._peek_center_index(x, y))
-
-                # (Optional full overlay refresh; keep under DEBUG to avoid extra work)
-                if DEBUG:
-                    self.ui.draw_battle_overlay(self)
-                    self.ui.debug_visible_ships(self, 0, tag="[BATTLE after player shot]")
-                    self.ui.debug_visible_ships(self, 1, tag="[BATTLE after player shot (enemy check)]")
 
                 # Sounds + message
                 self.ui.on_shot(result, tag=("P1" if shooter == 0 else ("P2" if self.mode_2p else "CPU")))
@@ -803,19 +735,11 @@ class Battleship:
                 # --- 1P: AI replies immediately ---
                 ax, ay = self.ai.pick_shot(self.difficulty)
                 ar     = self.boards[0].fire(ax, ay)
-                debug_print("ally_cell_after_ai:", self.boards[0].grid[ay*GRID_W + ax])
-                debug_print(ar, ax, ay)
 
                 self.ui._ensure_game_layers()
                 self.ui._set_game_layers_visible(grid=True, board=True, cursor=True)
                 _vis(self.ui)
                 self.ui.overlay_update_cells(self, [(ax, ay)])
-
-                if DEBUG:
-                    self.ui._fill_cell(self.ui._board_bmp, 0, 0, 2, filled=True)
-                    self.ui._flush()
-                    debug_print("center_after_flush(AI):", self.ui._peek_center_index(ax, ay))
-                    self.ui.draw_battle_overlay(self)
 
                 # Sounds + message for AI shot
                 if   ar == "hit":    self._beep(750, 0.09)
@@ -865,6 +789,7 @@ class Battleship:
             if key in (9, 11, 4):
                 self._enter_title()
             return
+
     # ---------------- internal helpers ----------------
     def _enter_title(self):
         gc.collect()
@@ -872,7 +797,6 @@ class Battleship:
         self.ui.profile = self.profile  # ensure binding
         self.ui._set_game_layers_visible(grid=False, board=False, cursor=False)
         _vis(self.ui)
-        #self.ui.clear()
         self.ui.draw_title()
         self.ui.set_title_mode(self.mode_2p)
         self.ui.leds_title(self.mode_2p)
@@ -888,13 +812,8 @@ class Battleship:
         gc.collect()
         self._settings_index = 0
         self._ensure_personality_items()
-        if DEBUG:
-            try:
-                validate_profiles(ppl.PROFILES)
-            except Exception as e:
-                debug_print("validate_profiles error:", e)
-                
-        # (Optional) enforce valid profile again, then sync UI profile
+
+        # Enforce valid profile again, then sync UI profile
         if self.profile_id not in ppl.PROFILES and self._settings_items[2][1]:
             self.profile_id = self._settings_items[2][1][0]
 
@@ -906,22 +825,21 @@ class Battleship:
         else:
             self.ui.profile = self.profile
 
-        self.ui.ensure_attached() 
-
+        self.ui.ensure_attached()
         self.ui._set_game_layers_visible(grid=False, board=False, cursor=False)
         _vis(self.ui)
         self.ui.clear()
         self.ui.draw_settings(self._settings_items, self._settings_index, self)
         self.ui.leds_settings()
         self.state = SETTINGS
-        
+
     def _start_new_game(self):
         gc.collect()
         _load_profiles()
-        
+
         # Lock in personality for this round
         self.profile = ppl.PROFILES.get(self.profile_id, ppl.PROFILES[ppl.DEFAULT_PROFILE_ID])
-        
+
         # Seed RNG using monotonic time (works on CircuitPython)
         try:
             seed = int(time.monotonic() * 1000000)
@@ -942,8 +860,8 @@ class Battleship:
         else:
             self.ui.profile = self.profile
             self.ui.refresh_palette()  # recolor without reallocating bitmaps
-            
-        self.ui.ensure_attached() 
+
+        self.ui.ensure_attached()
 
         # Fresh boards and placement
         self.boards = [Board(), Board()]
@@ -956,35 +874,20 @@ class Battleship:
         # Reset AI & auto-place enemy if 1P
         if not self.mode_2p:
             self.ai.random_place(self.boards[1], self.profile["ships"])
-            enemy_ships = sum(1 for v in self.boards[1].grid if v == SHIP)
-            debug_print("enemy_ship_cells:", enemy_ships)
 
         # Draw placement screen
         self.ui.clear()
         self.ui.draw_place(self)
-        self.ui.debug_visible_ships(self, self.current_player, tag="[PLACE after draw_place]")
         self.ui.leds_place()
         self.state = PLACE
 
     def _begin_battle(self):
-        p_ships = sum(1 for v in self.boards[0].grid if v == SHIP)
-        e_ships = sum(1 for v in self.boards[1].grid if v == SHIP)
-        debug_print("ship_cells  player:", p_ships, " enemy:", e_ships)
-    
-        gc.collect() 
+        gc.collect()
         self.current_player = 0
-        self.cursor = [0,0]
-        self.ui.clear(); 
-        self.ui.draw_battle_overlay(self) 
-        self.ui.debug_visible_ships(self, 1, tag="[BATTLE after initial overlay]")
-        #self.ui.draw_battle(self)
+        self.cursor = [0, 0]
+        self.ui.clear()
+        self.ui.draw_battle_overlay(self)
         self.ui.leds_battle()
-        
-        # TEMP: force-place a 2-long enemy ship at (0,0)
-        if DEBUG==True:
-            self.boards[1].place(0, 0, 2, horizontal=True)
-            debug_print("forced_ship_at:", (0,0), "and", (1,0))
-        
         self.state = BATTLE
 
     def _next_item(self):
@@ -996,7 +899,7 @@ class Battleship:
         if name == "Personality": return self.profile_id
         if name == "SFX": return "on" if self.sfx_enabled else "off"
         return ""
-         
+
     def _apply_setting(self, name, value):
         if name == "Mode":
             self.mode_2p = (value == "2P")
@@ -1011,11 +914,7 @@ class Battleship:
             self.profile = ppl.PROFILES.get(self.profile_id, ppl.PROFILES[ppl.DEFAULT_PROFILE_ID])
 
             if self.ui:
-                # Sync the UI with the new profile
                 self.ui.profile = self.profile
-
-                # If we're actively in gameplay, a live retint is fine.
-                # Otherwise, keep game layers hidden to avoid flashing during Settings/Title.
                 if self.state in (PLACE, BATTLE):
                     try:
                         self.ui.refresh_palette()
@@ -1027,6 +926,6 @@ class Battleship:
                         _vis(self.ui)
                     except Exception:
                         pass
-                    
+
         elif name == "SFX":
             self.sfx_enabled = (value == "on")

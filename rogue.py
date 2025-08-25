@@ -120,12 +120,23 @@ def _vline(bmp, x, y0, y1, c=1):
 def _cos01(t):  # cosine mapped to [0..1]
     return 0.5 + 0.5 * math.cos(t)
 
-def _safe_tone(macropad, freq, dur):
+# ---------- Sound (uses MacroPad.play_tone) ----------
+def _tone(macropad, freq, dur=0.05):
+    """Play a single tone if available."""
+    if not macropad: return
     try:
-        if macropad and hasattr(macropad, "play_tone"):
-            macropad.play_tone(freq, dur)
+        macropad.play_tone(int(freq), float(dur))
     except Exception:
         pass
+
+def _melody(macropad, notes):
+    """Play a short melody: notes = [(freq, dur), ...]."""
+    if not macropad: return
+    for f, d in notes:
+        try:
+            macropad.play_tone(int(f), float(d))
+        except Exception:
+            pass
 
 # ---------- Grid helpers (bytearray) ----------
 def _idx(x, y): return y * MAP_W + x
@@ -173,7 +184,7 @@ class rogue:
 
         # World
         self.grid = bytearray(MAP_W * MAP_H)  # all zeros initially (floors/walls set later)
-        self.enemies = []  # list of [x, y]
+        self.enemies = []  # list of [x, y, hp]
         self.players = [
             {"x": 1, "y": 1, "hp": PLAYER_MAX_HP, "score": 0, "alive": True},
             {"x": 1, "y": 1, "hp": PLAYER_MAX_HP, "score": 0, "alive": True},
@@ -225,6 +236,7 @@ class rogue:
                     self.group.remove(self._chrome_bg)
             except Exception:
                 pass
+
     # ---------- Public API ----------
     def _begin_play(self):
         self.state = "play"
@@ -240,10 +252,8 @@ class rogue:
         self._show_chrome(False)      # hide chrome during gameplay
         self._dirty = True
 
-        # Start jingle
-        _safe_tone(self.macropad, 880, 0.05)
-        _safe_tone(self.macropad, 1175, 0.06)
-        _safe_tone(self.macropad, 1567, 0.07)
+        # Start jingle (3 notes)
+        _melody(self.macropad, [(880, 0.05), (1175, 0.06), (1567, 0.07)])
     
     def new_game(self):
         random.seed(int(time.monotonic() * 1000) & 0xFFFFFFFF)
@@ -260,8 +270,8 @@ class rogue:
 
         # Draw the menu screen
         self._dirty = True
-        # (Optional) soft “ready” chirp
-        _safe_tone(self.macropad, 660, 0.03)
+        # Soft “ready” chirp
+        _tone(self.macropad, 660, 0.03)
 
     def tick(self):
         now = time.monotonic()
@@ -297,7 +307,7 @@ class rogue:
                 self._dirty = True
             elif key == K_START:
                 # Start game: gameplay hides chrome
-                self._begin_play()              # new_game() calls _show_chrome(False)
+                self._begin_play()
             return
 
         # -------- PLAY --------
@@ -309,7 +319,7 @@ class rogue:
                 p = self.players[self.cur_player]
                 if (p["hp"] < PLAYER_MAX_HP) and (random.random() < 0.05):
                     p["hp"] += 1
-                    _safe_tone(self.macropad, 660, 0.04)
+                    _tone(self.macropad, 660, 0.04)
                     self._dirty = True
                 self._end_turn()
             elif key in (K_START, K_MENU):
@@ -341,9 +351,6 @@ class rogue:
                 self._show_chrome(True)
                 self._dirty = True
             return
-
-    def button_up(self, key):
-        pass
 
     def cleanup(self):
         try:
@@ -454,7 +461,7 @@ class rogue:
         place_many(T_TREASURE, MAX_TREASURE)
         place_many(T_HEART,    MAX_HEARTS)
 
-        # Enemies: also streaming; store as tiny [x,y]
+        # Enemies: also streaming; store as tiny [x,y,hp]
         def place_enemies(count):
             placed = 0
             tries = 0
@@ -510,44 +517,43 @@ class rogue:
 
         tile = self._get(nx, ny)
         if tile == T_WALL:
-            _safe_tone(self.macropad, 220, 0.04)
+            _tone(self.macropad, 220, 0.04)  # wall thud
             return
 
         # Enemy there?
         eidx = self._enemy_at(nx, ny)
         if eidx is not None:
             e = self.enemies[eidx]
-            # Option A: deterministic damage each hit
+            # deterministic damage each hit
             e[2] -= 1
             if e[2] <= 0:
                 self.enemies.pop(eidx)
                 p["score"] += 5
-                _safe_tone(self.macropad, 880, 0.05)
+                _tone(self.macropad, 880, 0.05)   # kill
             else:
-                # hurt tone on nonlethal hit
-                _safe_tone(self.macropad, 520, 0.05)
+                _tone(self.macropad, 520, 0.05)   # hurt
             self._dirty = True
             self._end_turn()
             return
 
         # Step
         p["x"], p["y"] = nx, ny
-        _safe_tone(self.macropad, 660, 0.02)
+        _tone(self.macropad, 660, 0.02)
 
         if tile == T_TREASURE:
             p["score"] += 10
             self._set(nx, ny, T_FLOOR)
-            _safe_tone(self.macropad, 1200, 0.07)
+            _tone(self.macropad, 1200, 0.07)
         elif tile == T_HEART:
             if p["hp"] < PLAYER_MAX_HP:
                 p["hp"] += 1
             self._set(nx, ny, T_FLOOR)
-            _safe_tone(self.macropad, 990, 0.05)
+            _tone(self.macropad, 990, 0.05)
         elif tile == T_STAIRS:
             self.level += 1
             p["hp"] = min(PLAYER_MAX_HP, p["hp"] + 1)
             self._gen_level()
-            _safe_tone(self.macropad, 1567, 0.06)
+            _tone(self.macropad, 1567, 0.06)
 
         self._set_camera_target_to_player()
         self._dirty = True
@@ -597,10 +603,10 @@ class rogue:
                         p = self.players[i]
                         if p["alive"] and p["x"] == nx and p["y"] == ny:
                             p["hp"] -= 1
-                            _safe_tone(self.macropad, 180, 0.06)
+                            _tone(self.macropad, 180, 0.06)
                             if p["hp"] <= 0:
                                 p["alive"] = False
-                                _safe_tone(self.macropad, 120, 0.25)
+                                _tone(self.macropad, 120, 0.25)
                                 self._check_game_over()
                             hit_player = True
                             break
@@ -622,10 +628,10 @@ class rogue:
                             p = self.players[i]
                             if p["alive"] and p["x"] == nx and p["y"] == ny:
                                 p["hp"] -= 1
-                                _safe_tone(self.macropad, 180, 0.06)
+                                _tone(self.macropad, 180, 0.06)
                                 if p["hp"] <= 0:
                                     p["alive"] = False
-                                    _safe_tone(self.macropad, 120, 0.25)
+                                    _tone(self.macropad, 120, 0.25)
                                     self._check_game_over()
                                 hit_player = True
                                 break

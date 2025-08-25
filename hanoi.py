@@ -31,14 +31,6 @@
 #   • K10: Cycle disk count (3–7), starts new game.
 #   • K11: Not used.
 #
-# Exposed API for launcher:
-#   • .group    → displayio.Group to attach to display.
-#   • .new_game() → reset with current disk count.
-#   • .tick(dt) → update animation (handles K9 pulsing when solved).
-#   • .button(key, pressed=True) → handle key press.
-#   • .button_up(key) → stub (no effect).
-#   • .cleanup() → clear LEDs on exit.
-#
 # Notes:
 #   • Defensive wrappers around bitmaptools for compatibility.
 #   • Designed for 2-color display; all color feedback is via LEDs only.

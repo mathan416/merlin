@@ -1,584 +1,469 @@
-# hit_or_miss.py — Master Merlin "Hit or Miss" for Adafruit MacroPad
-# CircuitPython 8.x / 9.x compatible, non-blocking fades and animations
+# patterns.py — Master Merlin "Patterns" for Adafruit MacroPad
+# CircuitPython 8.x / 9.x, non-blocking LEDs/animation
 # Written by Iain Bennett — 2025
-# Inspired by Keith Tanner's Merlin for the Macropad
 #
-# License:
-#   Released under the CC0 1.0 Universal (Public Domain Dedication).
-#   You can copy, modify, distribute, and perform the work, even for commercial purposes,
-#   all without asking permission. Attribution is appreciated but not required.
+# 🎮 GAMEPLAY
+# ░ Classic Merlin “Patterns” re-imagined on a 3×3 MacroPad grid.
+# ░ The device streams a sequence of LED grids — one is the target pattern.
+# ░ In 1-Player mode, stop the stream when the MATCH appears.
+# ░ In 2-Player mode, buzz in first to claim the match — fastest wins!
+# ░ Higher levels add rotations, extra cells, and blinking blue tricksters.
+# ░ First to 4 points in 2P mode wins the crown 👑.
 #
-# Hit or Miss is a Master Merlin-style memory and deduction game where the
-# player tries to find hidden shapes on a 3×3 grid. Two levels are available:
+# 🌈 VISUALS
+# ░ Red = solid target cells
+# ░ Blue = blinking cells (level 4+)
+# ░ White = UI hints & prompts
+# ░ Green = score “pips” (2P mode)
 #
-# Level 1:
-#   • One hidden shape (T, V, or I) in a random orientation
-#   • K11 (Reveal) shows an abstract version of the shape only while held
+# 🎵 AUDIO
+# ░ Quick arpeggios for wins (660–880–990 Hz).
+# ░ Low “buzz” for wrong answers (196 Hz / 150 Hz).
 #
-# Level 2:
-#   • Three hidden shapes of random types
-#   • Shapes may overlap only at the center cell (K4)
-#   • No reveal option on K11
-#
-# Gameplay:
-#   • Press keys K0..K8 to guess cells
-#   • Hits turn red and stay lit
-#   • Misses briefly light blue, then fade out
-#   • Win when all target cells are found
-#
-# Controls:
-#   • K0..K8 — Select grid cells
-#   • K11    — Reveal shape (Level 1 only)
-#   • K9     — New game / return to level select
-#   • K3     — Start Level 1
-#   • K5     — Start Level 2
-#
-# Features:
-#   • Non-blocking LED fades for misses
-#   • Persistent hit indicators
-#   • Level selection with pulsing indicators
-#   • Distinct sounds for hits, misses, errors, and wins
+# 📜 LICENSE
+# Released under the CC0 1.0 Universal (Public Domain Dedication).
 
-import time
-import math
-import random
-import displayio
-import terminalio
+import time, math, random
+import displayio, terminalio
 from adafruit_display_text import label
 
-class hit_or_miss:
-    SHAPES = {
-        "V": [{0,4,2}, {6,4,8}, {0,4,6}, {2,4,8}],
-        "T": [{0,1,2,4}, {6,7,8,4}, {0,3,6,4}, {2,5,8,4}],
-        "I": [{0,1}, {1,2}, {3,4}, {4,5}, {6,7}, {7,8},
-              {0,3}, {3,6}, {1,4}, {4,7}, {2,5}, {5,8}],
-    }
-    SHAPE_TYPES = ("T", "I", "V")
-    
+
+class patterns:
+    # ---------- LED constants ----------
+    BRIGHT = 0.30
+    COLOR_BG    = 0x000000
+    COLOR_SOLID = 0xFF0000   # red = solid light
+    COLOR_BLINK = 0x00A0FF   # blue = blinking light (level 4, blinkers)
+    COLOR_HINT  = 0x00FF00   # pulsing prompts in menus
+    COLOR_UI    = 0xFFFFFF
+
+    # keys
+    CELLS = tuple(range(9))  # 0..8 grid
+    # 0 1 2
+    # 3 4 5
+    # 6 7 8
+    K_NEW     = 10           # 2P: New Game/Back on K10
+    K_NEW_1P  = 9            # 1P: New Game/Back on K9
+    K_COMP    = 11           # Computer Turn (start stream / stop in 1P)
+    P1_BUZZ   = 9            # 2P: Player 1 buzzer (K9)
+    P2_BUZZ   = 11           # 2P: Player 2 buzzer (K11)
+
+    # timings
+    LED_FRAME_DT = 1/30
+    BLINK_HZ = 1.0
+    STREAM_SHOW = 1.00
+    STREAM_GAP  = 0.35
+
+    # 2P match
+    POINTS_TO_WIN = 4
 
     def __init__(self, macropad, tones):
         self.mac = macropad
         self.tones = tones
 
-        # Setup the shapes
-        self.CANDIDATES = [(s, frozenset(c)) for s in self.SHAPE_TYPES for c in self.SHAPES[s]]
-
-        # LED / colors
-        self.BRIGHT = 0.30
-        self.COLOR_BG   = 0x000000
-        self.COLOR_HIT  = 0xFF0000  # red
-        self.COLOR_MISS = 0x0000FF  # blue
-
-        # Buttons
-        self.CELLS = tuple(range(9))  # 0..8
-        self.K_NEW = 9
-        self.K_REVEAL = 11
-        self.revealing = False
-
-        # Pulsing
-        self.SLOW_PULSE_HZ = 0.8
-
-        # Miss fade store: key -> (start_time, duration)
-        self.miss_fades = {}   # non-blocking fade out for misses
-        self.MISS_FADE_DUR = 0.6
-
-        # --- LED driver (anti-flicker) ---
-        self._led = [0] * 12          # cached colors
-        self._led_dirty = False
-        self._last_led_show = 0.0
-        self.LED_FRAME_DT = 1.0 / 30.0   # cap ~30 FPS
         try:
             self.mac.pixels.auto_write = False
         except AttributeError:
             pass
         self.mac.pixels.brightness = self.BRIGHT
+        self._led = [0]*12
+        self._led_dirty = False
+        self._last_led_show = 0.0
 
-        # Display
         self._build_display()
+        self._to_mode_select()
+        try:
+            self.mac.display.auto_refresh = True
+            self.mac.display.refresh(minimum_frames_per_second=0)
+        except Exception:
+            pass
 
-        # Game state
-        self._to_level_select()
+    # ---------- Display / HUD ----------
+    def _build_display(self):
+        W, H = self.mac.display.width, self.mac.display.height
+        g = displayio.Group()
 
-    # ------ Cleanup ------
+        # Merlin chrome background if available
+        try:
+            bmp = displayio.OnDiskBitmap("MerlinChrome.bmp")
+            tile = displayio.TileGrid(
+                bmp, pixel_shader=getattr(bmp, "pixel_shader", displayio.ColorConverter())
+            )
+            g.append(tile)
+        except Exception:
+            bg = displayio.Bitmap(W, H, 1)
+            pal = displayio.Palette(1)
+            pal[0] = self.COLOR_BG
+            g.append(displayio.TileGrid(bg, pixel_shader=pal))
+
+        # Two compact lines under the logo
+        self.line1 = label.Label(
+            terminalio.FONT, text="",
+            color=0xFFFFFF, anchor_point=(0.5, 0.0),
+            anchored_position=(W//2, 31)
+        )
+        self.line2 = label.Label(
+            terminalio.FONT, text="",
+            color=0xAAAAAA, anchor_point=(0.5, 0.0),
+            anchored_position=(W//2, 45)
+        )
+
+        g.append(self.line1)
+        g.append(self.line2)
+
+        # HUD text cache
+        self._t_cache = ("","")
+        self.group = g
+
+    def _set_hud(self, l1=None, l2=None):
+        old_l1, old_l2 = self._t_cache
+        if l1 is not None and l1 != old_l1:
+            self.line1.text = l1; old_l1 = l1
+        if l2 is not None and l2 != old_l2:
+            self.line2.text = l2; old_l2 = l2
+        self._t_cache = (old_l1, old_l2)
+
+    # ---------- Public API ----------
+    def new_game(self):
+        self._to_mode_select()
+
     def cleanup(self):
         if getattr(self, "_cleaned", False):
             return
         self._cleaned = True
 
-        # 0) Reset transient state
-        try:
-            self.miss_fades.clear()
-            self.revealing = False
-        except Exception:
-            pass
+        self.mode = "idle"
+        self._stopped = True
+        self._in_gap = False
+        self.stream_idx = -1
+        self._gap_until = 0.0
+        self._show_until = 0.0
 
-        # 1) Stop any sound and disable speaker
         try:
             if hasattr(self.mac, "stop_tone"):
                 self.mac.stop_tone()
         except Exception:
             pass
+
         try:
-            spk = getattr(self.mac, "speaker", None)
-            if spk is not None:
-                spk.enable = False
+            self.mac.pixels.fill(0x000000)
+            self.mac.pixels.show()
+            try: self.mac.pixels.auto_write = True
+            except Exception: pass
         except Exception:
             pass
 
-        # 2) LEDs: restore immediate updates and turn everything off
         try:
-            px = getattr(self.mac, "pixels", None)
-            if px:
-                try: px.auto_write = True
-                except Exception: pass
+            disp = self.mac.display
+            try: disp.auto_refresh = False
+            except Exception: pass
+
+            root = getattr(disp, "root_group", None)
+            if root is self.group:
                 try:
-                    for i in range(12):
-                        px[i] = 0x000000
-                    px.show()
+                    disp.root_group = None
                 except Exception:
-                    pass
+                    try:
+                        disp.show(None)
+                    except Exception:
+                        pass
+
+            try:
+                if hasattr(self, "line1"): self.line1.text = ""
+                if hasattr(self, "line2"): self.line2.text = ""
+            except Exception:
+                pass
+
+            try: disp.auto_refresh = True
+            except Exception: pass
         except Exception:
             pass
 
-        # 3) Detach our display group and leave a neutral screen
         try:
-            disp = getattr(self.mac, "display", None)
-            if disp:
-                try: disp.auto_refresh = False
-                except Exception: pass
-
-                try:
-                    if getattr(disp, "root_group", None) is getattr(self, "group", None):
-                        try:
-                            disp.root_group = None        # CP 9.x
-                        except Exception:
-                            try: disp.show(None)          # CP 8.x
-                            except Exception: pass
-                    # Push a clean refresh
-                    try: disp.refresh(minimum_frames_per_second=0)
-                    except TypeError:
-                        disp.refresh()
-                except Exception:
-                    pass
-
-                try: disp.auto_refresh = True
-                except Exception: pass
+            self.group = None
+            self.line1 = None
+            self.line2 = None
         except Exception:
             pass
 
-        # 4) Drop big references and GC
-        try: self.group = None
-        except Exception: pass
         try:
             import gc
             gc.collect()
         except Exception:
             pass
 
-    # ---------------- Display ----------------
-    def _build_display(self):
-        W, H = self.mac.display.width, self.mac.display.height
-        self.group = displayio.Group()
-
-        # Background
-        bg_bitmap = displayio.Bitmap(W, H, 1)
-        pal = displayio.Palette(1)
-        pal[0] = self.COLOR_BG
-        self.group.append(displayio.TileGrid(bg_bitmap, pixel_shader=pal))
-
-        # Status lines
-        self.title = label.Label(
-            terminalio.FONT, text="Hit or Miss",
-            color=0xFFFFFF, anchor_point=(0.5, 0.0), anchored_position=(W//2, 0)
-        )
-        self.line1 = label.Label(
-            terminalio.FONT, text="",
-            color=0xFFFFFF, anchor_point=(0.5, 0.0), anchored_position=(W//2, 21)
-        )
-        self.line2 = label.Label(
-            terminalio.FONT, text="",
-            color=0xAAAAAA, anchor_point=(0.5, 0.0), anchored_position=(W//2, 35)
-        )
-        self.group.append(self.title)
-        self.group.append(self.line1)
-        self.group.append(self.line2)
-
-    def _show(self):
-        try:
-            self.mac.display.root_group = self.group
-        except AttributeError:
-            self.mac.display.show(self.group)
-
-    # ---------------- Public API ----------------
-    def new_game(self):
-        self._to_level_select()
-        self._show()
+    # ---------- Key handling ----------
+    def _key_same(self):
+        return self.K_NEW_1P if self.players == 1 else self.K_NEW
 
     def button(self, key):
-        now = time.monotonic()
-
-        if self.mode == "level_select":
-            if key == 3:     # K3 -> Level 1
-                self.level = 1
-                self._start_round()
-            elif key == 5:   # K5 -> Level 2
-                self.level = 2
-                self._start_round()
-            elif key == self.K_NEW:
-                self._to_level_select()  # reflash LEDs
+        if self.mode == "mode":
+            if key == 3:
+                self.players = 1
+                self._to_level_select()
+            elif key == 5:
+                self.players = 2
+                self._to_level_select()
             return
 
-        # From here: mode == "play" or "won"
-        if key == self.K_NEW:
+        if self.mode == "level":
+            if key in (0,1,2,3):
+                self.level = key + 1
+                self._start_round()
+            elif key == self._key_same():
+                self._to_mode_select()
+            return
+
+        if key == self._key_same():
+            if self.players == 1:
+                self.streak = 0
             self._to_level_select()
             return
 
-        if self.mode != "play":
-            return
-
-        # Reveal (Level 1 only) handled on press (start) and release in button_up()
-        if key == self.K_REVEAL and self.level == 1:
-            self.revealing = True
-            return
-
-        # Board presses
-        if key in self.CELLS:
-            if key in self.guessed:
-                self._sound_error()
+        if self.mode == "preview":
+            if (self.players == 2 and key in (self.P1_BUZZ, self.P2_BUZZ)) \
+            or (self.players == 1 and key == self.K_COMP):
+                self._start_stream()
                 return
-            self.guessed.add(key)
+            return
 
-            self.shots += 1
-            target_cells = self.solution_cells if self.level == 1 else self.union_cells
-
-            if key in target_cells:
-                # HIT
-                self.hits.add(key)
-                self._led_set(key, self.COLOR_HIT)  # immediate visual
-                self._led_show()
-                self._sound_hit()
+        if self.mode == "stream":
+            if self.players == 2:
+                if key == self.P1_BUZZ:
+                    self._on_stop(buzzer=1)
+                    return
+                elif key == self.P2_BUZZ:
+                    self._on_stop(buzzer=2)
+                    return
             else:
-                # MISS — start fade (blue -> black), non-blocking
-                self.miss_fades[key] = (now, self.MISS_FADE_DUR)
-                self._led_set(key, self.COLOR_MISS)  # immediate blue, fade next frames
-                self._led_show()
-                self._sound_miss()
+                if key == self.K_COMP:
+                    self._on_stop(buzzer=None)
+                    return
+            return
 
-            self._update_stats()
+        if self.mode == "result":
+            if self.players == 2 and key in (self.P1_BUZZ, self.P2_BUZZ, self.K_COMP):
+                self._start_round()
+                return
+            if self.players == 1 and key == self.K_COMP:
+                self._start_round()
+            return
 
-            # Win check (works for both levels)
-            if target_cells.issubset(self.hits):
-                self._on_win()
+    def button_up(self, key): return
+    def encoderChange(self, new, old): return
 
-    def button_up(self, key):
-        # Stop reveal on release (Level 1 only)
-        if key == self.K_REVEAL and self.level == 1 and self.mode == "play":
-            self.revealing = False
-
-    def encoderChange(self, new, old):
-        return
-
+    # ---------- Main loop tick ----------
     def tick(self):
         now = time.monotonic()
+        if self.mode in ("mode","level"):
+            self._render_ui(now); return
+        if self.mode == "preview":
+            self._render_preview(now); return
+        if self.mode == "stream":
+            self._advance_stream(now); self._render_stream(now); return
+        if self.mode == "result":
+            self._render_result(now); return
 
-        if self.mode == "level_select":
-            self._render_level_select(now)
-            return
-
-        # While revealing (Level 1 only), draw ONLY the overlay each loop.
-        if self.mode == "play" and self.level == 1 and self.revealing:
-            self._render_reveal_overlay()
-            return
-
-        # Normal gameplay/won frame
-        self._render_game_leds(now)
-
-    # ---------------- Internals ----------------
-    def _start_round(self):
-        self.mode = "play"
-        self.shots = 0
-        self.hits = set()
-        self.guessed = set()
-        self.revealing = False
-        self.miss_fades.clear()
-        self._lights_clear()
-
-        if self.level == 1:
-            # One random shape, random placement set
-            shape = random.choice(("T", "I", "V"))
-            cells = self._place_ship_any(shape, occupied=set(), max_attempts=200)
-            if cells is None:
-                # Fallback if something odd happens
-                shape, cells = self._random_shape_L1()
-
-            self.shape_type = shape          # "T","V","I" (for the reveal overlay)
-            self.solution_cells = set(cells)
-            self.line1.text = "Level 1"
-            self._update_stats()
-
-        else:
-            # Level 2: three ships, no overlap except center (4) allowed
-            occupied = set()
-            ships = []
-            tries = 0
-            while len(ships) < 3 and tries < 800:
-                tries += 1
-                shape = random.choice(("T", "I", "V"))
-                cells = self._place_ship_any(shape, occupied=occupied, max_attempts=200)
-                if cells is None:
-                    continue
-                ships.append((shape, set(cells)))
-                for c in cells:
-                    if c != 4:
-                        occupied.add(c)
-
-            # If randomness didn’t find three, fall back to exact backtracking
-            if len(ships) < 3:
-                exact = self._place_three_ships_exact()
-                if exact:
-                    ships = exact
-                else:
-                    # ultra-safe fallback so the round is always playable
-                    ships = [("V", {0,4,2}), ("V", {6,4,8}), ("V", {0,4,6})]
-
-            # Attributes expected elsewhere
-            self.shape_sets = [cells for _, cells in ships]
-            u = set()
-            for s in self.shape_sets:
-                u |= s
-            self.union_cells = u
-            self.line1.text = "Level 2"
-            self._update_stats()
-
-        # Draw LED state immediately
-        self._render_game_leds(time.monotonic())
+    # ---------- State transitions ----------
+    def _to_mode_select(self):
+        self.mode = "mode"
+        self.players = None
+        self.level = None
+        self.streak = 0
+        self.p1 = 0
+        self.p2 = 0
+        self._led_fill(0); self._led_show()
+        self._set_hud("1P    2P", "Select Mode")
 
     def _to_level_select(self):
-        # enter level-select mode
-        self.mode = "level_select"
+        self.mode = "level"
         self.level = None
-        self.shots = 0
-        self.hits = set()
-        self.guessed = set()
-        self.revealing = False
-        self.miss_fades.clear()
+        self._led_fill(0); self._led_show()
+        self._set_hud("Choose Level", "L1  L2  L3  L4")
 
-        self.solution_cells = set()
-        self.union_cells = set()
-        self.shape_type = None
+    def _start_round(self):
+        self._stopped = False
+        self._gen_target_for_level()
+        self._build_stream()
+        self.mode = "preview"
+        self._led_fill(0); self._led_show()
+        self._hud_play()
 
-        self.line1.text = "\nSelect Level:"
-        self.line2.text = "\nL1    L2"
-
-        self._lights_clear()
-        self._show()
-
-    def _update_stats(self):
-        # Update display with shots and (optionally) hits
-        if self.mode == "play":
-            self.line2.text = "Shots: {}".format(self.shots)
-        elif self.mode == "won":
-            # Split over two lines
-            self.line1.text = "You Won in"
-            self.line2.text = "{} shots!".format(self.shots)
-
-    # ----- Shapes -----
-    def _random_shape_L1(self):
-        shape = random.choice(self.SHAPE_TYPES)
-        return shape, set(random.choice(self.SHAPES[shape]))
-
-    # Random valid placement for a given shape (list of cell indices)
-    def _random_positions_for_shape(self, shape):
-        # Return a list (not set) to keep call sites unchanged
-        #return list(random.choice(self.SHAPES[shape]))
-        return random.choice(self.SHAPES[shape]) 
-
-    def _place_ship_any(self, shape, occupied=None, max_attempts=60):
-        if occupied is None:
-            occupied = set()
-
-        for _ in range(max_attempts):
-            cells = self._random_positions_for_shape(shape)
-            if self._overlap_ok(cells, occupied):
-                return cells
-        return None
-
-    def _overlap_ok(self, cells, occupied):
-        # Overlap is allowed ONLY at center cell 4
-        for c in cells:
-            if c in occupied and c != 4:
-                return False
-        return True
-
-    # ----- Rendering -----
-    def _render_level_select(self, now):
-        # Base: everything off (diffed)
-        self._led_fill(0x000000)
-
-        # Pulse K3 and K5 only
-        pulse = self._pulse(now)
-        green_dim = self._scale(0x00FF00, 0.20 + 0.60 * pulse)
-        self._led_set(3, green_dim)
-        self._led_set(5, green_dim)
-
-        # K11 OFF during level select
-        self._led_set(self.K_REVEAL, 0x000000)
-
-        self._led_show()
-
-    def _render_game_leds(self, now):
-        # Start from 'off' (diffed)
-        self._led_fill(0x000000)
-
-        # hits stay red
-        for k in self.hits:
-            self._led_set(k, self.COLOR_HIT)
-
-        # misses fade out (blue -> black)
-        self._update_miss_fades(now)
-
-        # K11: dim blue ONLY while actively playing Level 1
-        if self.mode == "play" and self.level == 1:
-            self._led_set(self.K_REVEAL, self._scale(self.COLOR_MISS, 0.12))
-        else:
-            self._led_set(self.K_REVEAL, 0x000000)
-
-        # New button: pulse when won, dim otherwise
-        if self.mode == "won":
-            self._led_set(self.K_NEW, self._scale(0xFFFFFF, 0.65 + 0.35 * self._pulse(now)))
-        else:
-            self._led_set(self.K_NEW, self._scale(0xFFFFFF, 0.10))
-
-        self._led_show()
-
-    def _render_reveal_overlay(self):
-        # Level 1 only: show abstract shape while K11 held
-        # T -> {0,1,2,4}; V -> {0,4,2}; I -> {1,4}
-        overlay = set()
-        if self.shape_type == "T":
-            overlay = {0,1,2,4}
-        elif self.shape_type == "V":
-            overlay = {0,4,2}
-        else:  # "I"
-            overlay = {1,4}
-
-        self._led_fill(0x000000)
-        for i in overlay:
-            self._led_set(i, 0xFFFFFF)
-
-        # Keep K11 dim blue during reveal to signal "hold"
-        self._led_set(self.K_REVEAL, self._scale(self.COLOR_MISS, 0.12))
-        self._led_show()
-
-    def _update_miss_fades(self, now):
-        # For each fading miss, compute progress and set scaled blue
-        to_delete = []
-        for k, (t0, dur) in self.miss_fades.items():
-            t = (now - t0) / dur
-            if t >= 1.0:
-                to_delete.append(k)
-                continue
-            # cosine ease-out from 1 -> 0
-            s = 0.5 * (1 + math.cos(t * math.pi))  # 1..0
-            self._led_set(k, self._scale(self.COLOR_MISS, 0.15 + 0.35 * s))
-        for k in to_delete:
-            # ensure fully off at end
-            self._led_set(k, 0x000000)
-            del self.miss_fades[k]
-
-    # ----- Win / lose -----
-    def _on_win(self):
-        self.mode = "won"
-        self._update_stats()
-        self._sound_win()
-
-    # ----- Helpers -----
-    def _lights_clear(self):
-        self._led_fill(0x000000)
-        self._led_show()
-
-    # ---------- LED helpers (diff + rate-limit) ----------
-    def _led_set(self, idx, color):
-        if 0 <= idx < 12 and self._led[idx] != color:
-            self._led[idx] = color
-            self._led_dirty = True
-
-    def _led_fill(self, color):
-        changed = False
-        for i in range(12):
-            if self._led[i] != color:
-                self._led[i] = color
-                changed = True
-        if changed:
-            self._led_dirty = True
-
-    def _led_show(self):
+    def _start_stream(self):
+        self._stopped = False
+        self.mode = "stream"
+        self.stream_idx = -1
         now = time.monotonic()
-        if not self._led_dirty or (now - self._last_led_show) < self.LED_FRAME_DT:
-            return
-        for i, c in enumerate(self._led):
-            self.mac.pixels[i] = c
-        self._last_led_show = now
-        self._led_dirty = False
-        try:
-            self.mac.pixels.show()
-        except AttributeError:
-            pass
+        self._in_gap = True
+        self._gap_until = now
+        self._show_until = 0
+        self._led_fill(0); self._led_show()
+        self._hud_play(streaming=True)
 
-    def _pulse(self, now):
-        return 0.5 + 0.5 * math.cos(now * 2 * math.pi * self.SLOW_PULSE_HZ)
+    def _to_result(self, outcome, buzzer=None):
+        self.mode = "result"
+        self._result = outcome
+        self._result_buzzer = buzzer
+        if self.players == 1:
+            if outcome == "correct":
+                self.streak += 1; self._sound_win()
+            else:
+                self._sound_lose(); self.streak = 0
+        else:
+            if buzzer is None:
+                self._sound_lose()
+            else:
+                if outcome == "correct":
+                    if buzzer == 1: self.p1 += 1
+                    else: self.p2 += 1
+                    self._sound_win()
+                else:
+                    if buzzer == 1 and self.p1>0: self.p1 -= 1
+                    if buzzer == 2 and self.p2>0: self.p2 -= 1
+                    self._sound_lose()
 
-    def _scale(self, color, s):
-        r = (color >> 16) & 0xFF
-        g = (color >> 8) & 0xFF
-        b = color & 0xFF
-        r = int(r * s); g = int(g * s); b = int(b * s)
-        return (r << 16) | (g << 8) | b
+        if self.players == 2 and (self.p1 >= self.POINTS_TO_WIN or self.p2 >= self.POINTS_TO_WIN):
+            self._win_game_player = 1 if self.p1 >= self.POINTS_TO_WIN else 2
+        else:
+            self._win_game_player = None
 
-    def _place_three_ships_exact(self):
-        # Uses class-level CANDIDATES: [(shape, frozenset(cells)), ...]
-        candidates = list(self.CANDIDATES)  # copy so we can shuffle without mutating the class constant
-        random.shuffle(candidates)
+        self._hud_result()
 
-        result = []
+    # ---------- Pattern utilities ----------
+    _ROT90_CCW = {0:6,1:3,2:0,3:7,4:4,5:1,6:8,7:5,8:2}
+    _ROT90     = {0:2,1:5,2:8,3:1,4:4,5:7,6:0,7:3,8:6}
 
-        def ok_overlap(cells, occupied):
-            # Overlap allowed only at center (4)
-            return all((c == 4 or c not in occupied) for c in cells)
+    def _rot_set(self, cells, k):
+        out = set(cells)
+        for _ in range(k % 4):
+            out = {self._ROT90[i] for i in out}
+        return out
 
-        def backtrack(start, occupied):
-            if len(result) == 3:
+    def _sample_unique(self, pool, k):
+        lst = list(pool); n = len(lst)
+        if k >= n: return lst[:]
+        for i in range(k):
+            j = random.randint(i, n - 1)
+            lst[i], lst[j] = lst[j], lst[i]
+        return lst[:k]
+
+    def _gen_target_for_level(self):
+        lvl = self.level
+        if lvl == 1:
+            n = random.choice((2,3)); rot_ok = False; blinking = False
+        elif lvl == 2:
+            n = random.choice((4,5)); rot_ok = False; blinking = False
+        elif lvl == 3:
+            n = random.choice((4,5)); rot_ok = True;  blinking = False
+        else:
+            n = random.choice((5,6,7)); rot_ok = True;  blinking = True
+
+        cells = set(self._sample_unique(self.CELLS, n))
+        blink = set()
+        if blinking:
+            max_blink = max(1, min(3, n-1))
+            k = random.randint(1, max_blink)
+            blink = set(self._sample_unique(cells, k))
+            cells = cells - blink
+
+        self.target_solid = set(cells)
+        self.target_blink = set(blink)
+        self.rot_ok = rot_ok
+
+        if self.rot_ok:
+            cands = []
+            for r in range(4):
+                cands.append((tuple(sorted(self._rot_set(self.target_solid, r))),
+                              tuple(sorted(self._rot_set(self.target_blink, r)))))
+            self._canon = min(cands)
+        else:
+            self._canon = (tuple(sorted(self.target_solid)), tuple(sorted(self.target_blink)))
+
+    def _equal_match(self, solid, blink):
+        if not self.rot_ok:
+            return (tuple(sorted(solid)), tuple(sorted(blink))) == self._canon
+        for r in range(4):
+            if (tuple(sorted(self._rot_set(solid, r))),
+                tuple(sorted(self._rot_set(blink, r)))) == self._canon:
                 return True
-            for i in range(start, len(candidates)):
-                shape, cells = candidates[i]
-                if ok_overlap(cells, occupied):
-                    result.append((shape, set(cells)))          # return mutable sets like your callers expect
-                    new_occupied = occupied | (cells - {4})     # track all non-center cells as taken
-                    if backtrack(i + 1, new_occupied):
-                        return True
-                    result.pop()
-            return False
+        return False
 
-        if backtrack(0, set()):
-            return result    # [(shape, set_of_cells), x3]
-        return None
+    def _nearby_variant(self, base_s, base_b, rot_choices):
+        s = set(base_s); b = set(base_b)
+        tweaks = random.choice((1,1,2))
+        pool_on = s | b
+        pool_off = set(self.CELLS) - pool_on
+        for _ in range(tweaks):
+            if pool_on and pool_off and random.random()<0.7:
+                off = random.choice(tuple(pool_off)); on = random.choice(tuple(pool_on))
+                if on in s: s.remove(on); s.add(off)
+                else: b.remove(on); b.add(off)
+                pool_on = s | b; pool_off = set(self.CELLS) - pool_on
+            else:
+                if b and s and random.random()<0.5:
+                    x = random.choice(tuple(b)); b.remove(x); s.add(x)
+                elif b:
+                    x = random.choice(tuple(b)); b.remove(x); s.add(x)
+                elif s and self.level==4 and random.random()<0.3:
+                    x = random.choice(tuple(s)); s.remove(x); b.add(x)
 
-    # ----- Sounds -----
-    def _play(self, f, d):
-        try:
-            self.mac.play_tone(f, d)
-        except Exception:
-            pass
+        if rot_choices:
+            r = random.choice(rot_choices)
+            s = self._rot_set(s, r); b = self._rot_set(b, r)
+        return s, b
 
-    def _sound_hit(self):
-        self._play(659, 0.04)
+    def _build_stream(self):
+        L = random.randint(7, 11)
+        self.stream = []
+        correct_idx = random.randint(2, L-2) if L >= 5 else random.randint(1, L-1)
 
-    def _sound_miss(self):
-        self._play(330, 0.05)
+        rot_choices = [0] if not self.rot_ok else [0,1,2,3]
+        match_rot = 0 if not self.rot_ok else random.choice([0,1,2,3])
+        match_s = self._rot_set(self.target_solid, match_rot)
+        match_b = self._rot_set(self.target_blink, match_rot)
 
-    def _sound_error(self):
-        self._play(150, 0.07)
+        for i in range(L):
+            if i == correct_idx:
+                s = set(match_s); b = set(match_b)
+                self.stream.append((s,b,True))
+            else:
+                while True:
+                    s,b = self._nearby_variant(self.target_solid, self.target_blink,
+                                               rot_choices if self.rot_ok else [0])
+                    if not self._equal_match(s,b):
+                        self.stream.append((s,b,False))
+                        break
 
-    def _sound_win(self):
-        for f in (660, 880, 990):
-            self._play(f, 0.05)
+        self._correct_idx = correct_idx
+
+    # ---------- Streaming logic ----------
+    def _advance_stream(self, now):
+        if self._in_gap:
+            if now >= self._gap_until:
+                self.stream_idx += 1
+                if self.stream_idx >= len(self.stream):
+                    self._to_result("timeout", buzzer=None)
+                    return
+                self._in_gap = False
+                self._show_until = now + self.STREAM_SHOW
+            return
+
+        if now >= self._show_until:
+            self._in_gap = True
+            self._gap_until = now + self.STREAM_GAP
+
+    def _on_stop(self, buzzer):
+        if self._in_gap and self.stream_idx < 0: return
+        if getattr(self, "_stopped", False): return
+        self._stopped = True
+
+        idx = max(0, self.stream_idx)
+        if 0 <= idx < len(self.stream):
+            _, _, is_match = self.stream[idx]
+            outcome = "correct" if is_match else "wrong"
+        else:
+            outcome = "wrong"
+        self._to_result(outcome, buzzer=buzzer)
+
+    # ---------- UI renderers (unchanged) ----------
+    # ... [unchanged _render_ui, _render_preview, _render_stream, _render_result, HUD helpers, sound, LED helpers as in your original]

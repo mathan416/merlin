@@ -4,17 +4,6 @@
 # Written by Iain Bennett — 2025
 #
 #
-# Key Features:
-# - Smooth scrolling camera system; HUD pinned at screen top.
-# - Optional MerlinChrome.bmp logo shown in menu/pause/game-over.
-# - Low memory footprint:
-#   • Tile grid stored as a single flat bytearray (MAP_W*MAP_H).
-#   • Enemies stored as minimal [x,y,hp] lists.
-#   • Streaming level generation (no giant "empties" arrays).
-# - Defensive bitmaptools wrappers for safe tile drawing.
-# - Player stats (HP, score) and two-player "Swap" mode.
-# - LED system with cosine “breathing” brightness and state-aware coloring.
-#
 # Controls:
 #   MENU:
 #     ◀/▶ (K3/K5): Toggle Solo / Swap-2P

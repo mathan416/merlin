@@ -104,13 +104,11 @@ LUT_N = 64  # power of two keeps modulo cheap
 _LUT = [ (math.cos(2*math.pi*i/LUT_N), math.sin(2*math.pi*i/LUT_N)) for i in range(LUT_N) ]
 
 def _lut_cs(angle):
-    """Return (cos, sin) from a 64-entry LUT for speed."""
     a = angle % (2*math.pi)
     idx = int(a * (LUT_N / (2*math.pi))) & (LUT_N-1)
     return _LUT[idx]
 
 def rot_pts_lut(pts, angle):
-    """Rotate points using fast LUT cos/sin."""
     ca, sa = _lut_cs(angle)
     return [(x*ca - y*sa, x*sa + y*ca) for (x, y) in pts]
 
@@ -167,7 +165,6 @@ def d2(ax, ay, bx, by):
     return dx*dx + dy*dy
 
 def draw_poly_lines(bmp, pts):
-    """Line outline with wrap clones based on coarse bounds (kept for asteroids)."""
     n = len(pts)
     xs = [p[0] for p in pts]
     ys = [p[1] for p in pts]
@@ -295,7 +292,6 @@ class asteroids_lite:
 
     # ---------- Sprites: ship atlas ----------
     def _make_ship_atlas(self):
-        """Build a 1-bit sprite sheet of the ship for 32 angles and cache rects."""
         self._ship_frames = 32
         F = self._ship_frames
 
@@ -838,7 +834,6 @@ class asteroids_lite:
         return out
 
     def _clear(self, full=False):
-        """Erase last frame. If full=True, clear entire screen."""
         if full:
             _rect_fill(self.bmp, 0, 0, SCREEN_W, SCREEN_H, BG)
             self._dirty_prev = [(0, 0, SCREEN_W, SCREEN_H)]
@@ -889,8 +884,6 @@ class asteroids_lite:
         self._led_events.append({"name": name, "t0": time.monotonic(), "dur": dur, "extra": extra})
 
     def _led_service(self, now, dt):
-        """Animate keypad LEDs with smoothing, but only push to hardware
-        when colors changed AND at most ~30 Hz to save CPU."""
         if not self.macropad:
             return
         try:

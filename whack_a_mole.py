@@ -62,10 +62,6 @@ try:
 except Exception:
     HAVE_LABEL = False
 
-# -------- Debugging --------
-DEBUG = False               # flip to False to silence debug
-DEBUG_MIN_INTERVAL = 0.15  # seconds between repeated debug prints
-
 # ---------- Tunables ----------
 SCREEN_W, SCREEN_H = const(128), const(64)
 
@@ -133,7 +129,6 @@ SETTINGS_PATH = "/whack_a_mole_settings.json"
 
 # ---------- Optional discovery fallback ----------
 def _discover_io():
-    """Only used if no macropad is provided by the launcher."""
     pixels, beeper, mac = None, None, None
     try:
         import adafruit_macropad
@@ -203,7 +198,6 @@ class whack_a_mole:
 
         # --- State ---
         self.state = "mode"      # mode | settings | swap(wait-key) | playing | gameover
-        self._state_last = None  # for change-only logging
         self.mode  = "SOLO"      # SOLO | VERSUS
         self.player = 0
         self.scores = [0, 0]
@@ -254,32 +248,8 @@ class whack_a_mole:
         self._last_led_show = 0.0     # allow immediate first show (no throttle)
         self.LED_FRAME_DT = 1/30
 
-        # Debug throttle
-        self._last_dbg = 0.0
-
         self._led_all_off_immediate()
         self._draw_mode_menu()
-        self._dbg_once("INIT complete; state=mode")
-
-    # ---------- Debug helpers ----------
-    def _dbg(self, msg, every=DEBUG_MIN_INTERVAL, force=False):
-        if not DEBUG:
-            return
-        try:
-            now = time.monotonic()
-            if force or (now - self._last_dbg) >= every:
-                self._last_dbg = now
-                print("[{:.2f}] [{}] {}".format(now, self.state, msg))
-        except Exception:
-            pass
-
-    def _dbg_once(self, msg):
-        if DEBUG:
-            try:
-                now = time.monotonic()
-                print("[{:.2f}] [{}] {}".format(now, self.state, msg))
-            except Exception:
-                pass
 
     # ---------- Persistence ----------
     def _load_settings(self):
@@ -293,9 +263,8 @@ class whack_a_mole:
                     if k in data:
                         try: self.settings[k] = int(data[k])
                         except Exception: pass
-            self._dbg_once("Loaded settings: {}".format(self.settings))
-        except Exception as e:
-            self._dbg_once("No settings file (ok): {}".format(e))
+        except Exception:
+            pass
 
     def _save_settings(self):
         if not (json and storage):
@@ -304,7 +273,6 @@ class whack_a_mole:
             storage.remount("/", readonly=False)
             with open(SETTINGS_PATH, "w") as f:
                 json.dump(self.settings, f)
-            self._dbg_once("Saved settings: {}".format(self.settings))
         except Exception as e:
             try: print("Failed to save settings:", e)
             except Exception: pass
@@ -320,20 +288,12 @@ class whack_a_mole:
         if mode is not None:
             self.mode = "VERSUS" if str(mode).upper().startswith("V") else "SOLO"
         self.state = "mode"
-        self._state_change_log()
         self.player = 0
         self.scores = [0, 0]
         self._led_all_off_immediate()
         self._draw_mode_menu()
-        self._dbg_once("new_game -> mode={}, LEDs set for menu".format(self.mode))
-
-    def _state_change_log(self):
-        if self._state_last != self.state:
-            self._dbg_once("STATE -> {}".format(self.state))
-            self._state_last = self.state
 
     def tick(self):
-        self._state_change_log()
         now = time.monotonic()
 
         if self.state == "mode":
@@ -346,7 +306,6 @@ class whack_a_mole:
 
         if self.state == "swap":
             # WAIT for a key press (no auto-advance)
-            self._dbg("waiting for start key (swap)")
             return
 
         if self.state == "playing":
@@ -354,23 +313,17 @@ class whack_a_mole:
             if self.mode == "SOLO" and self.timer_end is not None:
                 remaining_global = self.timer_end - now
                 if remaining_global <= 0:
-                    self._dbg_once("SOLO time expired; end_segment")
                     self._end_segment(); return
 
             remaining_level = self.level_time_end - now
             if remaining_level <= 0:
-                self._dbg_once("Level time expired; advance")
                 self._advance_level(); return
 
             # Spawn gate
             if now >= self.next_spawn_at:
-                self._dbg("spawn window open (now={:.2f} >= next={:.2f})".format(now, self.next_spawn_at))
                 self._spawn_mole(now)
-            else:
-                self._dbg("spawn window closed (now={:.2f} < next={:.2f})".format(now, self.next_spawn_at))
 
             self._despawn_expired(now)
-
             self._update_hud(remaining_global)
             return
 
@@ -382,7 +335,6 @@ class whack_a_mole:
     def button(self, k, pressed=None):
         if pressed is None: pressed = True
         if not pressed: return
-        self._dbg_once("button k={} in state={}".format(k, self.state))
 
         if self.state == "mode":
             if k == K_1P:
@@ -401,7 +353,6 @@ class whack_a_mole:
                 self._save_settings()
                 self._draw_mode_menu()
                 self.state = "mode"
-                self._state_change_log()
                 return
             if k == K_MINUS:
                 self._change_setting(-1); return
@@ -411,27 +362,21 @@ class whack_a_mole:
 
         if self.state == "swap":
             # Any key starts the round for current player
-            self._dbg_once("swap -> start playing")
             self._go_playing()
             return
 
         if self.state == "playing":
             for (idx, _) in list(self.active):
                 if (idx & 0x80) == 0 and (idx == k):
-                    self._dbg_once("HIT key={} (removing and scoring)".format(k))
                     self.active = [(i,e) for (i,e) in self.active if i != idx]
                     self._hit_mole()
                     return
-            self._dbg("press on empty/decoy: k={}".format(k))
             return
 
         if self.state == "gameover":
             # Only K9 returns to the mode menu
             if k == K_MINUS:
-                self._dbg_once("gameover: K9 pressed -> back to mode")
                 self.new_game(self.mode)
-            else:
-                self._dbg("gameover: ignored key {}".format(k))
             return
 
     def encoderChange(self, new, old):
@@ -440,15 +385,12 @@ class whack_a_mole:
             if delta != 0:
                 n = len(self._setting_names)
                 self.settings_idx = (self.settings_idx + delta) % n
-                self._dbg("encoder moved; settings_idx={}".format(self.settings_idx))
 
     def cleanup(self):
         self._led_all_off_immediate()
-        self._dbg_once("cleanup -> all off")
 
     # ---------- Flow ----------
     def _go_playing(self):
-        """Common path for SOLO start and VS 'any key to start'."""
         self.level_idx = 0
         self.level_hits = 0
         self.combo = 0
@@ -456,8 +398,6 @@ class whack_a_mole:
         self._start_level_timer()
         self._hud_playing()
         self.state = "playing"
-        self._state_change_log()
-        self._dbg_once("_go_playing -> timers set; next_spawn_at={:.2f}".format(self.next_spawn_at))
 
     def _begin(self):
         self.scores = [0, 0]
@@ -467,14 +407,11 @@ class whack_a_mole:
         self._led_all_off_immediate()
         if self.mode == "SOLO":
             self.timer_end = (time.monotonic() + SOLO_TOTAL_TIME) if (self.settings["TIME"]==0) else None
-            self._dbg_once("_begin SOLO, timer_end={}".format(self.timer_end))
             self._go_playing()              # unified start path
         else:
             self._hud_text("P1 Ready", "Any key to start")
             self._ping()
             self.state = "swap"             # wait for key
-            self._state_change_log()
-            self._dbg_once("_begin VS -> swap")
 
     def _start_level_timer(self):
         now = time.monotonic()
@@ -483,10 +420,8 @@ class whack_a_mole:
         self.active = []
         self.next_spawn_at = now + self._rand_pause()  # first spawn randomized
         self._led_all_off_immediate()
-        self._dbg_once("_start_level_timer: level_time_end={:.2f}, next_spawn_at={:.2f}".format(self.level_time_end, self.next_spawn_at))
 
     def _render_gameover(self):
-        """Show final results and light K9 as 'Back to Menu'."""
         if self.mode == "SOLO":
             self._hud_text("Game Over", "S:{}  L:{}".format(self.scores[0], self.level_idx))
         else:
@@ -510,11 +445,8 @@ class whack_a_mole:
             self._hud_text("P2 Ready", "Any key to start")
             self._ping()
             self.state = "swap"
-            self._state_change_log()
-            self._dbg_once("end_segment -> P2 swap")
         else:
             self.state = "gameover"
-            self._state_change_log()
             # Play the sting + render results screen with K9 prompt
             if self.mode == "SOLO":
                 self._sting_neutral()
@@ -524,7 +456,6 @@ class whack_a_mole:
                 elif b > a: self._sting_lose()
                 else:       self._sting_draw()
             self._render_gameover()
-            self._dbg_once("end_segment -> gameover (press K9 to return)")
 
     def _advance_level(self):
         self.active = []
@@ -532,14 +463,12 @@ class whack_a_mole:
         self.level_idx += 1
         max_levels = VERSUS_LEVELS if self.mode == "VERSUS" else len(self.LEVELS)
         if self.level_idx >= max_levels:
-            self._dbg_once("advance_level -> finished segment")
             self._end_segment(); return
         self.combo = 0
         self.last_hit_time = 0.0
         self._start_level_timer()
         self._hud_playing()
         self._arpeggio_levelup()
-        self._dbg_once("advance_level -> L{}".format(self.level_idx+1))
 
     # ---------- Settings helpers ----------
     def _rebuild_levels_from_settings(self):
@@ -556,7 +485,6 @@ class whack_a_mole:
             d["color"] = theme_color
             levels.append(d)
         self.LEVELS = levels
-        self._dbg_once("levels rebuilt w/ theme={} sim_cap={} dec_scale={}".format(theme_name, sim_cap, dec_scale))
 
     def _setting_line(self):
         key = self._setting_names[self.settings_idx]
@@ -581,11 +509,7 @@ class whack_a_mole:
 
         if key in ("DEC","SIM","COL"):
             self._rebuild_levels_from_settings()
-        self._dbg(
-            "setting changed {} -> {}".format(SETTING_NAMES.get(key, key),
-                                            self._setting_values[key][self.settings[key]]),
-            every=0.01, force=True
-        )
+
     # ---------- UI / HUD ----------
     def _ensure_logo(self):
         if self._logo_tile is not None:
@@ -624,7 +548,6 @@ class whack_a_mole:
             K_2P: COL_CYAN,
             K_SETTINGS: COL_CYAN_DIM
         }, force=True)
-        self._dbg_once("mode menu drawn; LEDs set")
 
     def _render_mode(self, now):
         import math
@@ -637,7 +560,6 @@ class whack_a_mole:
 
     def _to_settings(self):
         self.state = "settings"
-        self._state_change_log()
         self._set_center("top", "Settings")
         self._set_center("mid", "")
         self._render_settings(time.monotonic())
@@ -681,12 +603,9 @@ class whack_a_mole:
     def _rand_pause(self):
         # scale by SPD setting: Slow=1.35x, Norm=1.0x, Fast=0.70x
         spd_scale = (1.35, 1.00, 0.70)[self.settings["SPD"]]
-        v = random.uniform(SPAWN_PAUSE_MIN, SPAWN_PAUSE_MAX) * spd_scale
-        self._dbg("rand_pause -> {:.2f}s".format(v))
-        return v
+        return random.uniform(SPAWN_PAUSE_MIN, SPAWN_PAUSE_MAX) * spd_scale
 
     def _shuffle_copy(self, seq):
-        """CircuitPython-safe shuffle (Fisher–Yates), returns a new list."""
         lst = list(seq)
         n = len(lst)
         for i in range(n - 1, 0, -1):
@@ -698,24 +617,19 @@ class whack_a_mole:
         lvl = self._level_cfg()
         need = lvl["simultaneous"] - len(self.active)
         if need <= 0:
-            self._dbg("no spawn (already {} active)".format(len(self.active)))
             return
         active_indices = {i & 0x7F for (i, _) in self.active}
         pool = [i for i in range(12) if i not in active_indices]
         choices = self._shuffle_copy(pool)
-        spawned = 0
         for _ in range(need):
             if not choices:
                 break
             idx = choices.pop()
             if random.random() < lvl["decoy_chance"]:
                 self.active.append((idx | 0x80, now + 0.45))
-                spawned += 1
             else:
                 vis = random.uniform(lvl["vis_min"], lvl["vis_max"])
                 self.active.append((idx, now + vis))
-                spawned += 1
-        self._dbg_once("_maybe_spawn -> spawned {}, active={}".format(spawned, len(self.active)))
         self._pixels_refresh(force=True)  # show spawns immediately
 
     def _despawn_expired(self, now):
@@ -723,9 +637,6 @@ class whack_a_mole:
         if not self.active:
             if now >= self.next_spawn_at:
                 self.next_spawn_at = now + self._rand_pause()
-                self._dbg("no actives; scheduled next_spawn_at={:.2f}".format(self.next_spawn_at))
-            else:
-                self._dbg("no actives; keeping next_spawn_at={:.2f}".format(self.next_spawn_at))
             return
 
         keep, missed_any = [], False
@@ -738,9 +649,6 @@ class whack_a_mole:
                         self.scores[self.player] += MISS_PENALTY
                     missed_any = True
 
-        if len(keep) != len(self.active):
-            self._dbg("despawned {} items".format(len(self.active)-len(keep)))
-
         self.active = keep
         if missed_any:
             self._thud()
@@ -749,10 +657,8 @@ class whack_a_mole:
         self._pixels_refresh()
 
     def _spawn_mole(self, now):
-        self._dbg_once("spawn_mole called")
         self._maybe_spawn(now)
         self.next_spawn_at = now + self._rand_pause()
-        self._dbg("spawn_mole scheduled next_spawn_at={:.2f}".format(self.next_spawn_at))
 
     def _hit_mole(self):
         now = time.monotonic()
@@ -768,13 +674,11 @@ class whack_a_mole:
         self._blip()
 
         # Clear remaining actives and refresh immediately (no leftover light)
-        self._dbg_once("HIT: combo={}, level_hits={}, score={}".format(self.combo, self.level_hits, self.scores[self.player]))
         self.active = []
         self._pixels_refresh(force=True)
 
         hits_needed = HITS_TO_CLEAR_BASE + self.level_idx * HITS_TO_CLEAR_STEP
         if self.level_hits >= hits_needed:
-            self._dbg_once("level cleared (needed={})".format(hits_needed))
             self._advance_level()
 
     # ---------- LED helpers (anti-flicker) ----------
@@ -784,7 +688,6 @@ class whack_a_mole:
             self._led_dirty = True
 
     def _led_fill(self):
-        """Clear local LED shadow buffer to off (no show here)."""
         ch = False
         for i in range(12):
             if self._led[i] != 0:
@@ -794,11 +697,6 @@ class whack_a_mole:
             self._led_dirty = True
 
     def _led_apply_map(self, mapping, default=(0,0,0), force=False):
-        """
-        Atomically apply a whole LED layout:
-          mapping: {index: (r,g,b), ...}
-        No intermediate blank frame; single .show() at the end.
-        """
         ch = False
         for i in range(12):
             c = mapping.get(i, default)
@@ -834,10 +732,6 @@ class whack_a_mole:
             k = idx & 0x7F
             if 0 <= k < 12:
                 layout[k] = col
-        if not layout:
-            self._dbg("pixels_refresh -> all off")
-        else:
-            self._dbg("pixels_refresh -> keys {}".format(sorted(list(layout.keys()))))
         self._led_apply_map(layout, force=force)
 
     def _led_all_off(self):
@@ -868,7 +762,6 @@ class whack_a_mole:
 
     # ---------- Small utils ----------
     def _scale(self, rgb, s):
-        """Return a DIMMED COLOR AS A TUPLE, never an int (NeoPixel-friendly)."""
         if s <= 0: return (0,0,0)
         if s >= 1:
             return rgb if isinstance(rgb, tuple) else ((rgb>>16)&0xFF, (rgb>>8)&0xFF, rgb&0xFF)

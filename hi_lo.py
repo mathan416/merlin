@@ -3,11 +3,6 @@
 # Written by Iain Bennett — 2025
 # Inspired by Keith Tanner's Merlin for the Macropad
 #
-# License:
-#   Released under the CC0 1.0 Universal (Public Domain Dedication).
-#   You can copy, modify, distribute, and perform the work, even for commercial purposes,
-#   all without asking permission. Attribution is appreciated but not required.
-#
 # Hi/Lo is a Master Merlin-style number guessing game where the player tries
 # to guess a secret number between 0 and 99. After each guess, the MacroPad
 # displays an arrow indicating whether the secret number is higher or lower.
@@ -84,7 +79,6 @@ class hi_lo:
         self._paint_entry_ui()
         self._show()
         self._win_cleared = False
-        # print("DEBUG target:", self.target)
 
     def button(self, key):
         now = time.monotonic()

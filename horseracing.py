@@ -112,7 +112,7 @@ def _fill_partial(bmp, x, y, w, h, c=1):
     if x1 < x0 or y1 < y0: return
     if _HAS_BT:
         try:
-            bitmaptools.fill_region(bmp, x, y, (x1 - x0 + 1), (y1 - y0 + 1), c)
+            bitmaptools.fill_region(bmp, x0, y0, (x1 - x0 + 1), (y1 - y0 + 1), c)
             return
         except Exception:
             pass
@@ -227,7 +227,7 @@ class horseracing:
                  "lbl1","lbl2",
                  "led","state","bet",
                  "pos","prev_pos","winner",
-                 "_last_step")
+                 "_last_step","_last_tick_t")
 
     def __init__(self, macropad=None, *_tones, **_kwargs):
         self.macropad = macropad
@@ -313,7 +313,7 @@ class horseracing:
         if self.state == STATE_TITLE:
             self._set_labels("Horseracing", "Press to begin")
         elif self.state == STATE_BET:
-            self._set_labels("", "Select lane K11 start")
+            self._set_labels("", "Select lane  •  K11 start")
             _clear_partial(self.fg_bmp, 0, 0, SCREEN_W, SCREEN_H)
             for i in range(LANES):
                 self._draw_horse_at(i, int(self.pos[i]))
@@ -323,43 +323,50 @@ class horseracing:
             for i in range(LANES):
                 self._draw_horse_at(i, int(self.pos[i]))
         else:
-            # RESULT labels will be updated when winner is known
             self._set_labels("", "")
 
-    # ----- Sound -----
-    def _blip(self, f):
+    # ----- Sound (uses MacroPad play_tone(freq, duration)) -----
+    def _tone(self, f, d=0.06):
         if self.macropad and hasattr(self.macropad, "play_tone"):
-            try: self.macropad.play_tone(int(f))
+            try: self.macropad.play_tone(int(f), float(d))
             except Exception: pass
+
+    def _melody(self, notes):
+        # notes: list of (freq, duration)
+        if not (self.macropad and hasattr(self.macropad, "play_tone")):
+            return
+        for f, d in notes:
+            try: self.macropad.play_tone(int(f), float(d))
+            except Exception: pass
+
+    def _hoof_tick(self, lane_idx):
+        # Light, short tick per lane; slight pitch stagger for variety
+        base = 480 + 28 * lane_idx
+        jitter = (-10, 0, 10)[lane_idx % 3]
+        self._tone(base + jitter, 0.028)
 
     # ----- LEDs -----
     def _draw_leds(self):
         self.led.fill(0x000000)
 
         if self.state == STATE_BET:
-            # K0..K4 at 25% white
+            # K0..K4 dim blue; selected bright; K11 green to start
             dim_blue = _scale_color(0x0080FF, 0.25)
             for i in range(LANES):
                 self.led.set(i, dim_blue)
-            # Selected lane at 75% white
             if self.bet is not None:
                 self.led.set(self.bet, _scale_color(0x0080FF, 0.75))
-            # K11 green to start
             self.led.set(11, 0x00FF00)
 
         elif self.state == STATE_RUN:
-            # Fade LEDs by *placement* (rank): 1st brightest … 5th dimmest.
-            # Ties share the same rank brightness.
-            # Compute ranks (higher x = further ahead).
+            # Fade LEDs by placement
             order = sorted(range(LANES), key=lambda idx: self.pos[idx], reverse=True)
-            ranks = [0]*LANES  # ranks[i] = 0 for 1st, 1 for 2nd, ...
+            ranks = [0]*LANES
             rank = 0
             for n, idx in enumerate(order):
                 if n > 0 and self.pos[idx] < self.pos[order[n-1]] - 1e-6:
-                    rank = n  # next distinct rank
+                    rank = n
                 ranks[idx] = rank
-            # Brightness per rank (0..4). Ensure last place still visible.
-            # Feel free to tweak these stops.
             rank_to_k = [1.00, 0.75, 0.55, 0.35, 0.20]
             for i in range(LANES):
                 r = ranks[i]
@@ -368,11 +375,9 @@ class horseracing:
                 self.led.set(i, _scale_color(0x0080FF, k))
 
         elif self.state == STATE_RESULT:
-            # Winner lit green
             if self.winner is not None:
                 self.led.set(self.winner, 0x00FF00)
 
-        # TITLE or any other: all off (already filled with black)
         self.led.show()
 
     # ----- Game Flow -----
@@ -383,6 +388,7 @@ class horseracing:
         self.prev_pos = self.pos[:]
         self.winner = None
         self._last_step = 0.0
+        self._last_tick_t = [0.0 for _ in range(LANES)]  # per-lane hoof-tick rate-limit
         self._initial_draw_for_state()
         self._draw_leds()
 
@@ -406,6 +412,11 @@ class horseracing:
             new_x = int(self.pos[i])
 
             if new_x != old_x:
+                # hoof tick (rate-limited per lane to avoid chatter)
+                if (now - self._last_tick_t[i]) > 0.06:
+                    self._hoof_tick(i)
+                    self._last_tick_t[i] = now
+
                 self._erase_horse_at(i, old_x)
                 if new_x > old_x:
                     _clear_partial(self.fg_bmp, old_x + HORSE_W, LANE_BASE_Y + i*LANE_H - HORSE_DY, 1, HORSE_H)
@@ -418,10 +429,10 @@ class horseracing:
             if self.pos[i] >= FINISH_X - HORSE_W:
                 self.winner = i
                 self.state = STATE_RESULT
-                # Result text per spec
-                self._set_labels("", "Winner:Lane {}".format(self.winner + 1))
+                self._set_labels("", "Winner: Lane {}".format(self.winner + 1))
                 self._draw_leds()
-                self._blip(587)
+                # Win jingle (short and cheerful)
+                self._melody([(523, 0.08), (659, 0.09), (784, 0.12)])
                 return
 
         self._draw_leds()
@@ -432,13 +443,13 @@ class horseracing:
             self.state = STATE_BET
             self._initial_draw_for_state()
             self._draw_leds()
-            self._blip(330)
+            self._tone(330, 0.06)
             return
 
         if self.state == STATE_BET:
             if 0 <= key < LANES:
                 self.bet = key
-                self._blip(330)
+                self._tone(392, 0.05)
                 self._draw_leds()
             else:
                 if self.bet is not None:
@@ -446,11 +457,13 @@ class horseracing:
                     self.pos = [START_X * 1.0 for _ in range(LANES)]
                     self.prev_pos = [START_X * 1.0 for _ in range(LANES)]
                     self.winner = None
+                    self._last_tick_t = [0.0 for _ in range(LANES)]
                     self._initial_draw_for_state()
                     self._draw_leds()
-                    self._blip(392)
+                    # Gate “go!” blip
+                    self._tone(440, 0.09)
         elif self.state == STATE_RESULT:
-            self._blip(247)
+            self._tone(247, 0.07)
             self.new_game()
 
     def cleanup(self):
