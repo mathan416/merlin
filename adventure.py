@@ -788,7 +788,7 @@ class adventure:
             else:
                 p1, p2 = self.players[0], self.players[1]
                 self._set_label(self._lbl1, f"P1:{p1['score']}  P2:{p2['score']}  L{self.level}", 64, 31, scale=1, anchor=(0.5,0))
-            self._set_label(self._lbl2, "Menu   Menu", 64, 45, scale=1, anchor=(0.5,0))
+            self._set_label(self._lbl2, "Death by Monster", 64, 45, scale=1, anchor=(0.5,0))
         else:
             _hline(self.surface, 0, SCREEN_W-1, 31, FG)
             _hline(self.surface, 0, SCREEN_W-1, 45, FG)
